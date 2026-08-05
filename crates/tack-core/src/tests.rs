@@ -1,4 +1,5 @@
 mod builtins;
+mod catalog;
 mod invocation;
 mod registry;
 mod runtime;

@@ -9,7 +9,12 @@ fn descriptor_builders_set_metadata() {
         .with_input_schema(json!({"type":"object"}))
         .with_output_schema(json!({"type":"string"}))
         .with_tag("browser")
-        .with_tags(["page", "code"]);
+        .with_tags(["page", "code"])
+        .with_read_only(false)
+        .with_destructive(true)
+        .with_idempotent(false)
+        .with_version("v1")
+        .with_capability("browser.code");
 
     assert_eq!(descriptor.path(), "eoka.eval");
     assert_eq!(descriptor.tool_id(), Some("tool-1"));
@@ -19,6 +24,35 @@ fn descriptor_builders_set_metadata() {
     assert_eq!(descriptor.input_schema(), &json!({"type":"object"}));
     assert_eq!(descriptor.output_schema(), &json!({"type":"string"}));
     assert_eq!(descriptor.tags(), &["browser", "page", "code"]);
+    assert_eq!(descriptor.annotations().read_only, Some(false));
+    assert_eq!(descriptor.annotations().destructive, Some(true));
+    assert_eq!(descriptor.annotations().idempotent, Some(false));
+    assert_eq!(descriptor.annotations().version.as_deref(), Some("v1"));
+    assert_eq!(
+        descriptor.annotations().capability.as_deref(),
+        Some("browser.code")
+    );
+}
+
+#[test]
+fn empty_annotations_do_not_change_descriptor_json_shape() {
+    let value = serde_json::to_value(ToolDescriptor::new("example.one", "one")).unwrap();
+    assert!(!value.as_object().unwrap().contains_key("annotations"));
+}
+
+#[test]
+fn descriptor_policy_filters_by_metadata() {
+    let registry = registry(vec![
+        ToolDescriptor::new("example.read", "read").with_read_only(true),
+        ToolDescriptor::new("example.write", "write").with_destructive(true),
+    ]);
+    let policy = DescriptorPolicy::new(|descriptor: &ToolDescriptor| {
+        descriptor.annotations().read_only == Some(true)
+    });
+    let filtered = registry.filtered_by_policy(&policy);
+
+    assert!(filtered.contains_path("example.read"));
+    assert!(!filtered.contains_path("example.write"));
 }
 
 #[tokio::test]

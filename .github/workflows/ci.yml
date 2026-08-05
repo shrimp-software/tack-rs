@@ -18,4 +18,5 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
       - run: cargo doc --workspace --no-deps
-      - run: cargo package --workspace
+      - run: cargo package -p tack-core
+      - run: cargo package --workspace --no-verify

@@ -6,6 +6,61 @@ use thiserror::Error;
 
 use super::paths::BUILTIN_TOOL_PATHS;
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolAnnotations {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub read_only: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destructive: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub idempotent: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capability: Option<String>,
+}
+
+impl ToolAnnotations {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn read_only(mut self, read_only: bool) -> Self {
+        self.read_only = Some(read_only);
+        self
+    }
+
+    pub fn destructive(mut self, destructive: bool) -> Self {
+        self.destructive = Some(destructive);
+        self
+    }
+
+    pub fn idempotent(mut self, idempotent: bool) -> Self {
+        self.idempotent = Some(idempotent);
+        self
+    }
+
+    pub fn version(mut self, version: impl Into<String>) -> Self {
+        self.version = Some(version.into());
+        self
+    }
+
+    pub fn capability(mut self, capability: impl Into<String>) -> Self {
+        self.capability = Some(capability.into());
+        self
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.read_only.is_none()
+            && self.destructive.is_none()
+            && self.idempotent.is_none()
+            && self.version.is_none()
+            && self.capability.is_none()
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolDescriptor {
@@ -23,6 +78,8 @@ pub struct ToolDescriptor {
     output_schema: Value,
     #[serde(default)]
     tags: Vec<String>,
+    #[serde(default, skip_serializing_if = "ToolAnnotations::is_empty")]
+    annotations: ToolAnnotations,
 }
 
 impl ToolDescriptor {
@@ -36,6 +93,7 @@ impl ToolDescriptor {
             input_schema: json!({"type":"object","properties":{},"additionalProperties":true}),
             output_schema: Value::Null,
             tags: Vec::new(),
+            annotations: ToolAnnotations::default(),
         }
     }
 
@@ -71,8 +129,17 @@ impl ToolDescriptor {
         &self.tags
     }
 
+    pub fn annotations(&self) -> &ToolAnnotations {
+        &self.annotations
+    }
+
     pub fn with_tool_id(mut self, tool_id: impl Into<String>) -> Self {
         self.tool_id = Some(tool_id.into());
+        self
+    }
+
+    pub(crate) fn with_path(mut self, path: impl Into<String>) -> Self {
+        self.path = path.into();
         self
     }
 
@@ -107,6 +174,36 @@ impl ToolDescriptor {
         S: Into<String>,
     {
         self.tags.extend(tags.into_iter().map(Into::into));
+        self
+    }
+
+    pub fn with_annotations(mut self, annotations: ToolAnnotations) -> Self {
+        self.annotations = annotations;
+        self
+    }
+
+    pub fn with_read_only(mut self, read_only: bool) -> Self {
+        self.annotations.read_only = Some(read_only);
+        self
+    }
+
+    pub fn with_destructive(mut self, destructive: bool) -> Self {
+        self.annotations.destructive = Some(destructive);
+        self
+    }
+
+    pub fn with_idempotent(mut self, idempotent: bool) -> Self {
+        self.annotations.idempotent = Some(idempotent);
+        self
+    }
+
+    pub fn with_version(mut self, version: impl Into<String>) -> Self {
+        self.annotations.version = Some(version.into());
+        self
+    }
+
+    pub fn with_capability(mut self, capability: impl Into<String>) -> Self {
+        self.annotations.capability = Some(capability.into());
         self
     }
 }
@@ -189,7 +286,7 @@ impl ToolRegistry {
             tools: self
                 .tools
                 .iter()
-                .filter(|tool| policy.is_allowed(&tool.path))
+                .filter(|tool| policy.is_descriptor_allowed(tool))
                 .cloned()
                 .collect(),
         }

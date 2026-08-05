@@ -14,55 +14,50 @@ embedding a full scripting environment with broad ambient access is too much.
 ## Crates
 
 - [`tack-core`](https://docs.rs/tack-core): host-independent contracts, registries, policies, discovery helpers, and the execution engine.
+- `tack-macros`: optional macros for typed tool-set definitions.
 - [`tack-runtime-quickjs`](https://docs.rs/tack-runtime-quickjs): a QuickJS + Oxc runtime for executing TypeScript snippets.
 
 ## Install
 
 ```toml
 [dependencies]
-tack-core = "0.0.1"
-tack-runtime-quickjs = "0.0.1"
+tack-core = "0.0.2"
+tack-runtime-quickjs = "0.0.2"
+
+# Optional typed-tool macros:
+tack-macros = "0.0.2"
 ```
 
 ## Example
 
 ```rust
-use async_trait::async_trait;
 use serde_json::{Value, json};
-use std::sync::Arc;
-use tack_core::{
-    ExecutionEngine, ToolCall, ToolCallOutput, ToolDescriptor, ToolInvoker, ToolRegistry,
-};
+use tack_core::{ExecutionEngine, ToolCallOutput, ToolCatalog, ToolDescriptor};
 use tack_runtime_quickjs::QuickJsRuntime;
-
-struct HostTools;
-
-#[async_trait]
-impl ToolInvoker for HostTools {
-    async fn call(&self, call: ToolCall) -> ToolCallOutput {
-        match call.path.as_str() {
-            "inventory.lookup" => {
-                let sku = call.input.get("sku").and_then(Value::as_str).unwrap_or("");
-                ToolCallOutput::data(json!({ "sku": sku, "inStock": true }))
-            }
-            _ => ToolCallOutput::failure(format!("Unknown tool: {}", call.path)),
-        }
-    }
-}
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let registry = ToolRegistry::from_tools(vec![
-        ToolDescriptor::new("inventory.lookup", "lookup")
+    let mut inventory = ToolCatalog::new();
+    inventory
+        .register_fn(
+            ToolDescriptor::new("lookup", "lookup")
             .with_description("Look up inventory by SKU")
             .with_input_schema(json!({
                 "type": "object",
                 "required": ["sku"],
                 "properties": { "sku": { "type": "string" } }
             })),
-    ])
-    .unwrap();
-    let engine = ExecutionEngine::new(registry, QuickJsRuntime, Arc::new(HostTools));
+            |input| async move {
+                let sku = input.get("sku").and_then(Value::as_str).unwrap_or("");
+                ToolCallOutput::data(json!({ "sku": sku, "inStock": true }))
+            },
+        )
+        .unwrap();
+
+    let mut catalog = ToolCatalog::new();
+    catalog.mount("inventory", inventory).unwrap();
+
+    let engine = ExecutionEngine::from_catalog(catalog, QuickJsRuntime);
 
     let output = engine
         .execute(
@@ -79,6 +74,23 @@ async fn main() {
     assert_eq!(output.emitted, vec![json!({ "checked": "abc-123" })]);
 }
 ```
+
+Runnable examples are included in the QuickJS runtime crate:
+
+```bash
+cargo run -p tack-runtime-quickjs --example catalog
+cargo run -p tack-runtime-quickjs --example dynamic_adapter
+cargo run -p tack-runtime-quickjs --example basic
+cargo run -p tack-runtime-quickjs --example discovery
+cargo run -p tack-runtime-quickjs --example aliases_policy_limits
+```
+
+More focused docs:
+
+- [Quickstart](docs/quickstart.md)
+- [Tool Catalogs](docs/catalog.md)
+- [Tool Macros](docs/macros.md)
+- [TypeScript API](docs/typescript-api.md)
 
 ## Execution Model
 
@@ -175,5 +187,5 @@ cargo fmt --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo doc --workspace --no-deps
-cargo package --workspace
+bash scripts/release-check.sh
 ```
