@@ -1,12 +1,13 @@
 # tack-rs
 
-Rust crates for Tack Code Mode: a small execution layer for running TypeScript
-snippets against a host-provided tool registry.
+Rust crates for tool-backed TypeScript execution. A host application exposes a
+registry of named tools, then `tack-rs` runs short TypeScript snippets that can
+discover those tools, call them, emit structured values, and return JSON.
 
 This workspace contains:
 
-- `tack-codemode`: host-independent Code Mode contracts, tool registry types, built-in discovery helpers, policy hooks, and the execution engine.
-- `tack-runtime-quickjs`: a QuickJS + Oxc runtime for executing TypeScript Code Mode snippets.
+- `tack-codemode`: host-independent contracts, tool registry types, built-in discovery helpers, policy hooks, and the execution engine.
+- `tack-runtime-quickjs`: a QuickJS + Oxc runtime for executing TypeScript snippets.
 
 The repository is ready for private/internal v1 usage. Publishing to crates.io
 still requires an explicit release decision.
@@ -20,6 +21,11 @@ of tools to short-lived TypeScript snippets:
 - MCP-style tool discovery and invocation
 - host-controlled browser, API, database, or local workflow automation
 - internal agents where the host owns the tool registry and policy layer
+
+In practice, this is the Rust runtime/library layer behind Tack's "Code Mode":
+instead of asking an agent to issue one tool call at a time, the agent can write
+a small program that searches available tools, calls them in loops or batches,
+combines their responses, and returns one structured result.
 
 Do not treat `tack-runtime-quickjs` as the only security boundary for hostile
 public multi-tenant code. It removes ambient browser/Node capabilities and
@@ -70,10 +76,10 @@ async fn main() {
 }
 ```
 
-## Contract
+## Execution Contract
 
-Code Mode executes a TypeScript function body in a fresh QuickJS context. The
-host provides a `ToolRegistry` and a `ToolInvoker`; the runtime exposes:
+The runtime executes a TypeScript function body in a fresh QuickJS context. The
+host provides a `ToolRegistry` and a `ToolInvoker`; the snippet gets:
 
 - `tools.search({ query, limit })`
 - `tools.describe.tool({ path })`
@@ -146,7 +152,7 @@ cargo package --workspace
 Before publishing:
 
 - run the verification commands above on Rust 1.94
-- verify parity against the Tack Code Mode v1 fixture
+- verify parity against the Tack tool-execution v1 fixture
 - confirm semver version bumps in both crates
 - publish `tack-codemode` first, then `tack-runtime-quickjs`
 - do not publish from this local checkout without explicit authorization

@@ -1,10 +1,10 @@
-//! Host-independent contracts for Tack Code Mode.
+//! Host-independent contracts for tool-backed TypeScript execution.
 //!
-//! This crate defines the stable data model shared by Code Mode hosts and
-//! runtimes: tool descriptors, invocation envelopes, runtime limits, execution
-//! results, built-in discovery helpers, and policy hooks. Hosts provide a
-//! [`ToolInvoker`], runtimes implement [`CodeRuntime`], and [`ExecutionEngine`]
-//! ties them together.
+//! This crate defines the stable data model shared by hosts and runtimes: tool
+//! descriptors, invocation envelopes, runtime limits, execution results,
+//! built-in discovery helpers, and policy hooks. Hosts provide a
+//! [`ToolInvoker`], runtimes implement [`CodeRuntime`], and
+//! [`ExecutionEngine`] ties them together.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

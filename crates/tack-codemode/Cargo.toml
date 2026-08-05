@@ -1,7 +1,7 @@
 [package]
 name = "tack-codemode"
 version.workspace = true
-description = "Host-independent Tack Code Mode contracts, tool registry, policies, and execution engine."
+description = "Host-independent contracts, tool registry, policies, and execution engine for tool-backed TypeScript snippets."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

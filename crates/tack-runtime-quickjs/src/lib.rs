@@ -1,4 +1,4 @@
-//! QuickJS runtime for Tack Code Mode.
+//! QuickJS runtime for tool-backed Tack TypeScript snippets.
 //!
 //! This crate executes TypeScript snippets against the host-independent
 //! contracts from `tack-codemode`. It uses Oxc to strip TypeScript syntax,
