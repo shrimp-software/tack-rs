@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::cmp::Reverse;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
@@ -50,6 +50,8 @@ impl ToolDescriptor {
     }
 }
 
+const BUILTIN_TOOL_PATHS: &[&str] = &["tools.search", "tools.describe.tool", "tools.invoke"];
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolRegistry {
@@ -57,6 +59,24 @@ pub struct ToolRegistry {
 }
 
 impl ToolRegistry {
+    pub fn validate(&self) -> Result<(), RegistryValidationError> {
+        let mut paths = self
+            .tools
+            .iter()
+            .map(|tool| tool.path.as_str())
+            .collect::<Vec<_>>();
+        paths.sort_unstable();
+        if let Some(duplicate) = paths.windows(2).find(|paths| paths[0] == paths[1]) {
+            return Err(RegistryValidationError::DuplicateToolPath(
+                duplicate[0].to_string(),
+            ));
+        }
+        for tool in &self.tools {
+            validate_tool_path(&tool.path)?;
+        }
+        Ok(())
+    }
+
     pub fn by_path(&self, path: &str) -> Option<&ToolDescriptor> {
         self.tools.iter().find(|tool| tool.path == path)
     }
@@ -109,23 +129,51 @@ impl ToolRegistry {
             });
         }
         tools.sort_by(|left, right| left.path.cmp(&right.path));
-        if let Some(duplicate) = tools
-            .windows(2)
-            .find(|tools| tools[0].path == tools[1].path)
-            .map(|tools| tools[0].path.clone())
-        {
-            return Err(ManifestImportError::DuplicateToolPath(duplicate));
-        }
-        Ok(Self { tools })
+        let registry = Self { tools };
+        registry.validate()?;
+        Ok(registry)
     }
+}
+
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum RegistryValidationError {
+    #[error("tool path must not be empty")]
+    EmptyToolPath,
+    #[error("tool path `{path}` has invalid segment `{segment}`")]
+    InvalidToolPath { path: String, segment: String },
+    #[error("tool path `{0}` is reserved")]
+    ReservedToolPath(String),
+    #[error("tool registry contains duplicate path `{0}`")]
+    DuplicateToolPath(String),
+}
+
+fn validate_tool_path(path: &str) -> Result<(), RegistryValidationError> {
+    if path.is_empty() {
+        return Err(RegistryValidationError::EmptyToolPath);
+    }
+    if path.starts_with("__tack")
+        || BUILTIN_TOOL_PATHS.contains(&path)
+        || path.starts_with("tools.")
+    {
+        return Err(RegistryValidationError::ReservedToolPath(path.to_string()));
+    }
+    for segment in path.split('.') {
+        if !is_js_identifier(segment) {
+            return Err(RegistryValidationError::InvalidToolPath {
+                path: path.to_string(),
+                segment: segment.to_string(),
+            });
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Error)]
 pub enum ManifestImportError {
     #[error("invalid Tack manifest: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("Tack manifest maps multiple tools to path `{0}`")]
-    DuplicateToolPath(String),
+    #[error("invalid Tack registry: {0}")]
+    Registry(#[from] RegistryValidationError),
 }
 
 #[derive(Debug, Deserialize)]
@@ -324,6 +372,27 @@ pub trait CodeRuntime: Send + Sync {
 pub struct RuntimeFailure {
     pub phase: FailurePhase,
     pub message: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub emitted: Vec<Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub logs: Vec<String>,
+}
+
+impl RuntimeFailure {
+    pub fn new(phase: FailurePhase, message: impl Into<String>) -> Self {
+        Self {
+            phase,
+            message: message.into(),
+            emitted: Vec::new(),
+            logs: Vec::new(),
+        }
+    }
+
+    pub fn with_output(mut self, emitted: Vec<Value>, logs: Vec<String>) -> Self {
+        self.emitted = emitted;
+        self.logs = logs;
+        self
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -399,6 +468,7 @@ where
     }
 
     pub async fn execute(&self, source: impl Into<String>) -> ExecutionResult {
+        let registry = self.execution_registry();
         if let Err(error) = validate_aliases(&self.aliases) {
             return ExecutionResult {
                 ok: false,
@@ -414,16 +484,28 @@ where
                 result: None,
                 emitted: Vec::new(),
                 logs: Vec::new(),
-                error: Some(RuntimeFailure {
-                    phase: FailurePhase::Runtime,
-                    message: error.to_string(),
-                }),
+                error: Some(RuntimeFailure::new(
+                    FailurePhase::Runtime,
+                    error.to_string(),
+                )),
+            };
+        }
+        if let Err(error) = registry.validate() {
+            return ExecutionResult {
+                ok: false,
+                result: None,
+                emitted: Vec::new(),
+                logs: Vec::new(),
+                error: Some(RuntimeFailure::new(
+                    FailurePhase::Runtime,
+                    error.to_string(),
+                )),
             };
         }
 
         let input = RuntimeInput {
             source: source.into(),
-            registry: self.execution_registry(),
+            registry,
             aliases: self.aliases.clone(),
             limits: self.limits.clone(),
         };
@@ -439,8 +521,8 @@ where
             Err(error) => ExecutionResult {
                 ok: false,
                 result: None,
-                emitted: Vec::new(),
-                logs: Vec::new(),
+                emitted: error.emitted.clone(),
+                logs: error.logs.clone(),
                 error: Some(error),
             },
         }
@@ -467,16 +549,16 @@ where
 pub fn validate_aliases(aliases: &HashMap<String, String>) -> Result<(), RuntimeFailure> {
     for (namespace, prefix) in aliases {
         if is_reserved_alias_namespace(namespace) || !is_js_identifier(namespace) {
-            return Err(RuntimeFailure {
-                phase: FailurePhase::Runtime,
-                message: format!("invalid alias namespace: {namespace}"),
-            });
+            return Err(RuntimeFailure::new(
+                FailurePhase::Runtime,
+                format!("invalid alias namespace: {namespace}"),
+            ));
         }
         if !prefix.split('.').all(is_js_identifier) {
-            return Err(RuntimeFailure {
-                phase: FailurePhase::Runtime,
-                message: format!("invalid alias prefix: {prefix}"),
-            });
+            return Err(RuntimeFailure::new(
+                FailurePhase::Runtime,
+                format!("invalid alias prefix: {prefix}"),
+            ));
         }
     }
     Ok(())
@@ -665,21 +747,80 @@ pub fn describe_tool(registry: &ToolRegistry, path: &str) -> Option<ToolDescript
 }
 
 fn schema_to_type(schema: &Value) -> String {
-    match schema.get("type").and_then(Value::as_str) {
-        Some("string") => "string".to_string(),
-        Some("number") | Some("integer") => "number".to_string(),
-        Some("boolean") => "boolean".to_string(),
-        Some("array") => {
-            let item = schema
-                .get("items")
-                .map(schema_to_type)
-                .unwrap_or_else(|| "unknown".to_string());
-            format!("{item}[]")
-        }
-        Some("object") => object_schema_to_type(schema),
-        Some("null") => "null".to_string(),
+    if let Some(value) = schema.get("const") {
+        return literal_type(value);
+    }
+    if let Some(values) = schema.get("enum").and_then(Value::as_array) {
+        return union_type(values.iter().map(literal_type));
+    }
+    if let Some(values) = schema
+        .get("oneOf")
+        .or_else(|| schema.get("anyOf"))
+        .and_then(Value::as_array)
+    {
+        return union_type(values.iter().map(schema_to_type));
+    }
+    match schema.get("type") {
+        Some(Value::String(kind)) => schema_kind_to_type(kind, schema),
+        Some(Value::Array(kinds)) => union_type(
+            kinds
+                .iter()
+                .filter_map(Value::as_str)
+                .map(|kind| schema_kind_to_type(kind, schema)),
+        ),
         _ if schema.is_null() => "unknown".to_string(),
         _ => "unknown".to_string(),
+    }
+}
+
+fn schema_kind_to_type(kind: &str, schema: &Value) -> String {
+    match kind {
+        "string" => "string".to_string(),
+        "number" | "integer" => "number".to_string(),
+        "boolean" => "boolean".to_string(),
+        "array" => array_schema_to_type(schema),
+        "object" => object_schema_to_type(schema),
+        "null" => "null".to_string(),
+        _ => "unknown".to_string(),
+    }
+}
+
+fn array_schema_to_type(schema: &Value) -> String {
+    if let Some(items) = schema.get("prefixItems").and_then(Value::as_array) {
+        let fields = items
+            .iter()
+            .map(schema_to_type)
+            .collect::<Vec<_>>()
+            .join(", ");
+        return format!("[{fields}]");
+    }
+    let item = schema
+        .get("items")
+        .map(schema_to_type)
+        .unwrap_or_else(|| "unknown".to_string());
+    format!("{item}[]")
+}
+
+fn literal_type(value: &Value) -> String {
+    match value {
+        Value::String(_) | Value::Number(_) | Value::Bool(_) | Value::Null => {
+            serde_json::to_string(value).expect("json schema literal")
+        }
+        _ => "unknown".to_string(),
+    }
+}
+
+fn union_type(types: impl IntoIterator<Item = String>) -> String {
+    let mut unique = Vec::new();
+    for ty in types {
+        if !unique.contains(&ty) {
+            unique.push(ty);
+        }
+    }
+    if unique.is_empty() {
+        "unknown".to_string()
+    } else {
+        unique.join(" | ")
     }
 }
 
@@ -689,8 +830,15 @@ fn object_schema_to_type(schema: &Value) -> String {
         .and_then(Value::as_object)
         .cloned()
         .unwrap_or_default();
+    let additional = schema.get("additionalProperties");
     if properties.is_empty() {
-        return "Record<string, unknown>".to_string();
+        return match additional {
+            Some(Value::Object(_)) => {
+                format!("Record<string, {}>", schema_to_type(additional.unwrap()))
+            }
+            Some(Value::Bool(false)) => "{}".to_string(),
+            _ => "Record<string, unknown>".to_string(),
+        };
     }
     let required = schema
         .get("required")
@@ -700,10 +848,10 @@ fn object_schema_to_type(schema: &Value) -> String {
                 .iter()
                 .filter_map(Value::as_str)
                 .map(str::to_string)
-                .collect::<Vec<_>>()
+                .collect::<HashSet<_>>()
         })
         .unwrap_or_default();
-    let fields = properties
+    let mut fields = properties
         .iter()
         .map(|(key, value)| {
             let optional = if required.contains(key) { "" } else { "?" };
@@ -713,8 +861,11 @@ fn object_schema_to_type(schema: &Value) -> String {
                 schema_to_type(value)
             )
         })
-        .collect::<Vec<_>>()
-        .join("; ");
+        .collect::<Vec<_>>();
+    if additional == Some(&Value::Bool(true)) {
+        fields.push("[key: string]: unknown".to_string());
+    }
+    let fields = fields.join("; ");
     format!("{{ {fields} }}")
 }
 
@@ -1010,6 +1161,34 @@ mod tests {
         assert!(result.error.unwrap().message.contains("invalid alias"));
     }
 
+    #[tokio::test]
+    async fn execution_engine_rejects_reserved_tool_paths_before_runtime_execution() {
+        let engine = ExecutionEngine::new(
+            ToolRegistry {
+                tools: vec![ToolDescriptor::new("tools.search", "search")],
+            },
+            StaticRuntime::ok(json!(5)),
+            Arc::new(MemoryInvoker::default()),
+        );
+        let result = engine.execute("return 5").await;
+        assert!(!result.ok);
+        assert_eq!(
+            result.error.unwrap().message,
+            "tool path `tools.search` is reserved"
+        );
+    }
+
+    #[test]
+    fn registry_validation_rejects_invalid_tool_paths() {
+        let registry = ToolRegistry {
+            tools: vec![ToolDescriptor::new("eoka.fetch-url", "fetch-url")],
+        };
+        assert!(matches!(
+            registry.validate(),
+            Err(RegistryValidationError::InvalidToolPath { .. })
+        ));
+    }
+
     #[test]
     fn schema_type_handles_objects() {
         let ty = schema_to_type(&json!({
@@ -1021,6 +1200,26 @@ mod tests {
             ty,
             "{ \"content-type\": string; timeout?: number; url: string }"
         );
+    }
+
+    #[test]
+    fn schema_type_handles_unions_enums_and_maps() {
+        let nullable = schema_to_type(&json!({"type":["string","null"]}));
+        assert_eq!(nullable, "string | null");
+
+        let choices = schema_to_type(&json!({"enum":["low","high",null]}));
+        assert_eq!(choices, "\"low\" | \"high\" | null");
+
+        let union = schema_to_type(&json!({
+            "oneOf":[{"type":"integer"},{"const":"auto"}]
+        }));
+        assert_eq!(union, "number | \"auto\"");
+
+        let map = schema_to_type(&json!({
+            "type":"object",
+            "additionalProperties":{"type":"boolean"}
+        }));
+        assert_eq!(map, "Record<string, boolean>");
     }
 
     #[test]
@@ -1115,8 +1314,25 @@ mod tests {
             }
         }))
         .unwrap_err();
-        assert!(
-            matches!(error, ManifestImportError::DuplicateToolPath(path) if path == "eoka.eval")
-        );
+        assert!(matches!(
+            error,
+            ManifestImportError::Registry(RegistryValidationError::DuplicateToolPath(path))
+                if path == "eoka.eval"
+        ));
+    }
+
+    #[test]
+    fn registry_import_rejects_reserved_sdk_paths() {
+        let error = ToolRegistry::from_manifest_value(&json!({
+            "tools": {
+                "left": {"namespaceName":"tools","sdkName":"search"}
+            }
+        }))
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            ManifestImportError::Registry(RegistryValidationError::ReservedToolPath(path))
+                if path == "tools.search"
+        ));
     }
 }

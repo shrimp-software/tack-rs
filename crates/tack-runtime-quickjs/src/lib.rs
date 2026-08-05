@@ -31,6 +31,8 @@ use tack_codemode::{
 };
 use tokio::time;
 
+const BOOTSTRAP_JS: &str = include_str!("bootstrap.js");
+
 #[derive(Clone, Debug, Default)]
 pub struct QuickJsRuntime;
 
@@ -52,6 +54,12 @@ async fn execute_async(
 ) -> Result<RuntimeOutput, RuntimeFailure> {
     validate_aliases(&input.aliases)?;
     input.limits.validate().map_err(runtime_limits_error)?;
+    input.registry.validate().map_err(|error| {
+        RuntimeFailure::new(
+            FailurePhase::Runtime,
+            format!("invalid tool registry: {error}"),
+        )
+    })?;
     let transformed = transform_typescript(&input.source)?;
     let captured = CapturedOutput::new(input.limits.max_output_bytes);
     let call_count = Arc::new(Mutex::new(0usize));
@@ -81,9 +89,10 @@ async fn execute_async(
     let context = AsyncContext::full(&runtime).await.map_err(runtime_error)?;
 
     let output = {
+        let captured_for_run = captured.clone();
         let run = context.async_with(async |ctx| {
             let global = ctx.globals();
-            let captured_for_emit = captured.clone();
+            let captured_for_emit = captured_for_run.clone();
             global
                 .set(
                     "__tackEmitJson",
@@ -93,7 +102,7 @@ async fn execute_async(
                 )
                 .map_err(runtime_error)?;
 
-            let captured_for_log = captured.clone();
+            let captured_for_log = captured_for_run.clone();
             global
                 .set(
                     "__tackLogLine",
@@ -169,24 +178,24 @@ async fn execute_async(
             let bootstrap = bootstrap_script(&input.aliases, input.limits.max_tool_request_bytes);
             ctx.eval::<(), _>(bootstrap)
                 .catch(&ctx)
-                .map_err(|error| caught_runtime_error(error, &timed_out))?;
+                .map_err(|error| captured_for_run.caught_failure(error, &timed_out))?;
             let wrapped = format!(
                 "(async function(){{const __tackResultStringify = JSON.stringify; const __tackValue = await {transformed}\n; return __tackResultStringify({{value:__tackValue}});}})()"
             );
             let promise = ctx
                 .eval::<Promise, _>(wrapped)
                 .catch(&ctx)
-                .map_err(|error| caught_runtime_error(error, &timed_out))?;
+                .map_err(|error| captured_for_run.caught_failure(error, &timed_out))?;
             let result_json = promise
                 .into_future::<String>()
                 .await
                 .catch(&ctx)
-                .map_err(|error| caught_runtime_error(error, &timed_out))?;
+                .map_err(|error| captured_for_run.caught_failure(error, &timed_out))?;
             let result = serde_json::from_str::<Value>(&result_json)
                 .ok()
                 .and_then(|value| value.get("value").cloned())
                 .unwrap_or(Value::Null);
-            let output = captured.into_output(result)?;
+            let output = captured_for_run.into_output(result)?;
             enforce_output_limit(&output, input.limits.max_output_bytes)?;
             Ok(output)
         });
@@ -195,7 +204,7 @@ async fn execute_async(
             output = &mut run => output,
             _ = time::sleep(timeout) => {
                 timed_out.store(true, Ordering::Relaxed);
-                Err(timeout_failure())
+                Err(captured.failure(FailurePhase::Timeout, "execution timed out"))
             }
         }
     };
@@ -209,17 +218,7 @@ async fn cleanup_runtime(runtime: &AsyncRuntime) {
 }
 
 fn runtime_limits_error(error: RuntimeLimitsError) -> RuntimeFailure {
-    RuntimeFailure {
-        phase: FailurePhase::Runtime,
-        message: error.to_string(),
-    }
-}
-
-fn timeout_failure() -> RuntimeFailure {
-    RuntimeFailure {
-        phase: FailurePhase::Timeout,
-        message: "execution timed out".to_string(),
-    }
+    RuntimeFailure::new(FailurePhase::Runtime, error.to_string())
 }
 
 /// Tracks captured logs and emitted values as an early output guard.
@@ -262,16 +261,40 @@ impl CapturedOutput {
 
     fn into_output(self, result: Value) -> Result<RuntimeOutput, RuntimeFailure> {
         if self.exceeded.load(Ordering::Relaxed) {
-            return Err(RuntimeFailure {
-                phase: FailurePhase::Runtime,
-                message: format!("execution output exceeded {} bytes", self.max_bytes),
-            });
+            return Err(self.failure(
+                FailurePhase::Runtime,
+                format!("execution output exceeded {} bytes", self.max_bytes),
+            ));
         }
         Ok(RuntimeOutput {
             result,
             emitted: self.emitted.lock().expect("emitted lock").clone(),
             logs: self.logs.lock().expect("logs lock").clone(),
         })
+    }
+
+    fn snapshot(&self) -> (Vec<Value>, Vec<String>) {
+        (
+            self.emitted.lock().expect("emitted lock").clone(),
+            self.logs.lock().expect("logs lock").clone(),
+        )
+    }
+
+    fn failure(&self, phase: FailurePhase, message: impl Into<String>) -> RuntimeFailure {
+        let (emitted, logs) = self.snapshot();
+        RuntimeFailure::new(phase, message).with_output(emitted, logs)
+    }
+
+    fn caught_failure(
+        &self,
+        error: rquickjs::CaughtError<'_>,
+        timed_out: &AtomicBool,
+    ) -> RuntimeFailure {
+        if timed_out.load(Ordering::Relaxed) {
+            self.failure(FailurePhase::Timeout, "execution timed out")
+        } else {
+            self.failure(FailurePhase::Runtime, error.to_string())
+        }
     }
 
     fn reserve(&self, next_bytes: usize) -> bool {
@@ -295,120 +318,7 @@ fn bootstrap_script(
 ) -> String {
     let mut script =
         format!("(() => {{\nconst __tackMaxToolRequestBytes = {max_tool_request_bytes};\n");
-    script.push_str(
-        r#"
-const __tackStringify = JSON.stringify;
-const __tackParse = JSON.parse;
-const __tackString = String;
-const __tackDefine = Object.defineProperty;
-const __tackFunctionCall = Function.prototype.call;
-const __tackHasOwn = __tackFunctionCall.bind(Object.prototype.hasOwnProperty);
-const __tackHostCallJson = globalThis.__tackCallJson;
-const __tackHostEmitJson = globalThis.__tackEmitJson;
-const __tackHostLogLine = globalThis.__tackLogLine;
-function __tackEmit(value) {
-  const json = __tackStringify(value);
-  if (typeof json === 'string') __tackHostEmitJson(json);
-}
-function __tackFormatLogArg(value) {
-  if (typeof value === 'string') return value;
-  if (typeof value === 'undefined') return 'undefined';
-  if (typeof value === 'function') return value.toString();
-  try {
-    const json = __tackStringify(value);
-    return typeof json === 'undefined' ? __tackString(value) : json;
-  } catch (_error) {
-    return __tackString(value);
-  }
-}
-function __tackToolFailure(message) {
-  return { ok: false, error: { message } };
-}
-function __tackSerializeToolInput(input) {
-  let inputJson;
-  try {
-    inputJson = __tackStringify(input);
-  } catch (_error) {
-    return { ok: false, output: __tackToolFailure('tool request is not JSON serializable') };
-  }
-  if (typeof inputJson !== 'string') {
-    return { ok: false, output: __tackToolFailure('tool request is not JSON serializable') };
-  }
-  if (inputJson.length > __tackMaxToolRequestBytes) {
-    return { ok: false, output: __tackToolFailure('tool request too large') };
-  }
-  return { ok: true, inputJson };
-}
-function __tackCallable(path, direct) {
-  return async (input = {}) => {
-    const serialized = __tackSerializeToolInput(input);
-    const output = serialized.ok
-      ? __tackParse(await __tackHostCallJson(path, serialized.inputJson))
-      : serialized.output;
-    if (!direct) return output;
-    if (!output.ok) {
-      const message = output.error && output.error.message ? output.error.message : `Tool failed: ${path}`;
-      throw new Error(message);
-    }
-    if (__tackHasOwn(output, "data")) return output.data;
-    if (__tackHasOwn(output, "text")) return output.text;
-    return output.raw ?? null;
-  };
-}
-function __tackInvokeArguments(args) {
-  if (args.length === 1 && args[0] !== null && typeof args[0] === 'object' && __tackHasOwn(args[0], 'path')) {
-    if (typeof args[0].path !== 'string' || args[0].path.length === 0) {
-      return { error: __tackToolFailure('tool path is required') };
-    }
-    return {
-      path: args[0].path,
-      input: __tackHasOwn(args[0], 'input') ? args[0].input : {}
-    };
-  }
-  if (typeof args[0] !== 'string' || args[0].length === 0) {
-    return { error: __tackToolFailure('tool path is required') };
-  }
-  return {
-    path: args[0],
-    input: args.length > 1 ? args[1] : {}
-  };
-}
-function __tackNamespace(prefix, direct) {
-  return new Proxy(function(){}, {
-    get(_target, prop) {
-      if (prop === 'then') return undefined;
-      if (prefix === '' && prop === 'invoke') {
-        return async (...args) => {
-          const call = __tackInvokeArguments(args);
-          if (call.error) return call.error;
-          return __tackCallable(call.path, false)(call.input);
-        };
-      }
-      const name = String(prop);
-      const path = prefix ? `${prefix}.${name}` : (name === 'search' || name === 'describe' ? `tools.${name}` : name);
-      return __tackNamespace(path, direct);
-    },
-    apply(_target, _thisArg, args) {
-      return __tackCallable(prefix, direct)(args.length === 0 ? {} : args[0]);
-    }
-  });
-}
-__tackDefine(globalThis, 'emit', { value: __tackEmit, writable: false, configurable: false });
-__tackDefine(globalThis, 'console', {
-  value: { log: (...args) => {
-    let line = '';
-    for (let i = 0; i < args.length; i += 1) {
-      if (i > 0) line += ' ';
-      line += __tackFormatLogArg(args[i]);
-    }
-    __tackHostLogLine(line);
-  } },
-  writable: false,
-  configurable: false
-});
-__tackDefine(globalThis, 'tools', { value: __tackNamespace('', false), writable: false, configurable: false });
-"#
-    );
+    script.push_str(BOOTSTRAP_JS);
     for (namespace, prefix) in aliases {
         script.push_str(&format!(
             "__tackDefine(globalThis, {}, {{ value: __tackNamespace({}, true), writable: false, configurable: false }});\n",
@@ -434,45 +344,45 @@ fn transform_typescript(source: &str) -> Result<String, RuntimeFailure> {
     let source_type = SourceType::ts();
     let ret = Parser::new(&allocator, &wrapped_source, source_type).parse();
     if !ret.errors.is_empty() {
-        return Err(RuntimeFailure {
-            phase: FailurePhase::Parse,
-            message: format!(
+        return Err(RuntimeFailure::new(
+            FailurePhase::Parse,
+            format!(
                 "{:?}",
                 ret.errors[0]
                     .clone()
                     .with_source_code(wrapped_source.clone())
             ),
-        });
+        ));
     }
     let mut program = ret.program;
     let semantic = SemanticBuilder::new()
         .with_excess_capacity(2.0)
         .build(&program);
     if !semantic.errors.is_empty() {
-        return Err(RuntimeFailure {
-            phase: FailurePhase::Parse,
-            message: format!(
+        return Err(RuntimeFailure::new(
+            FailurePhase::Parse,
+            format!(
                 "{:?}",
                 semantic.errors[0]
                     .clone()
                     .with_source_code(wrapped_source.clone())
             ),
-        });
+        ));
     }
     let mut options = TransformOptions::default();
     options.helper_loader.mode = HelperLoaderMode::External;
     let transform = Transformer::new(&allocator, path, &options)
         .build_with_scoping(semantic.semantic.into_scoping(), &mut program);
     if !transform.errors.is_empty() {
-        return Err(RuntimeFailure {
-            phase: FailurePhase::Parse,
-            message: format!(
+        return Err(RuntimeFailure::new(
+            FailurePhase::Parse,
+            format!(
                 "{:?}",
                 transform.errors[0]
                     .clone()
                     .with_source_code(wrapped_source.clone())
             ),
-        });
+        ));
     }
     let code = Codegen::new()
         .with_options(CodegenOptions {
@@ -486,41 +396,26 @@ fn transform_typescript(source: &str) -> Result<String, RuntimeFailure> {
 }
 
 fn runtime_error(error: rquickjs::Error) -> RuntimeFailure {
-    RuntimeFailure {
-        phase: FailurePhase::Runtime,
-        message: error.to_string(),
-    }
-}
-
-fn caught_runtime_error(
-    error: rquickjs::CaughtError<'_>,
-    timed_out: &AtomicBool,
-) -> RuntimeFailure {
-    if timed_out.load(Ordering::Relaxed) {
-        return RuntimeFailure {
-            phase: FailurePhase::Timeout,
-            message: "execution timed out".to_string(),
-        };
-    }
-    RuntimeFailure {
-        phase: FailurePhase::Runtime,
-        message: error.to_string(),
-    }
+    RuntimeFailure::new(FailurePhase::Runtime, error.to_string())
 }
 
 fn enforce_output_limit(
     output: &RuntimeOutput,
     max_output_bytes: usize,
 ) -> Result<(), RuntimeFailure> {
-    let bytes = serde_json::to_vec(output).map_err(|error| RuntimeFailure {
-        phase: FailurePhase::Runtime,
-        message: format!("execution output is not JSON serializable: {error}"),
+    let bytes = serde_json::to_vec(output).map_err(|error| {
+        RuntimeFailure::new(
+            FailurePhase::Runtime,
+            format!("execution output is not JSON serializable: {error}"),
+        )
+        .with_output(output.emitted.clone(), output.logs.clone())
     })?;
     if bytes.len() > max_output_bytes {
-        return Err(RuntimeFailure {
-            phase: FailurePhase::Runtime,
-            message: format!("execution output exceeded {max_output_bytes} bytes"),
-        });
+        return Err(RuntimeFailure::new(
+            FailurePhase::Runtime,
+            format!("execution output exceeded {max_output_bytes} bytes"),
+        )
+        .with_output(output.emitted.clone(), output.logs.clone()));
     }
     Ok(())
 }
@@ -644,6 +539,44 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    async fn preserves_captured_output_on_runtime_failure() {
+        let engine = ExecutionEngine::new(
+            ToolRegistry::default(),
+            QuickJsRuntime,
+            Arc::new(MemoryInvoker::default()),
+        );
+        let result = engine
+            .execute("emit({step: 1}); console.log('before'); throw new Error('boom');")
+            .await;
+        assert!(!result.ok);
+        assert_eq!(result.emitted, vec![json!({"step": 1})]);
+        assert_eq!(result.logs, vec!["before".to_string()]);
+        let error = result.error.unwrap();
+        assert_eq!(error.emitted, vec![json!({"step": 1})]);
+        assert_eq!(error.logs, vec!["before".to_string()]);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn preserves_captured_output_on_timeout() {
+        let limits = RuntimeLimits {
+            timeout_ms: 50,
+            ..RuntimeLimits::default()
+        };
+        let engine = ExecutionEngine::new(
+            ToolRegistry::default(),
+            QuickJsRuntime,
+            Arc::new(MemoryInvoker::default()),
+        )
+        .with_limits(limits);
+        let result = engine
+            .execute("console.log('before'); while (true) {}")
+            .await;
+        assert!(!result.ok);
+        assert_eq!(result.logs, vec!["before".to_string()]);
+        assert_eq!(result.error.unwrap().logs, vec!["before".to_string()]);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     async fn console_log_formats_multiple_arguments() {
         let engine = ExecutionEngine::new(
             ToolRegistry::default(),
@@ -720,6 +653,24 @@ mod tests {
             output.result,
             json!({"search":"example.allowed","hidden":"unknown_tool"})
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn direct_runtime_use_rejects_reserved_registry_paths() {
+        let input = RuntimeInput {
+            source: "return 1;".to_string(),
+            registry: ToolRegistry {
+                tools: vec![ToolDescriptor::new("tools.search", "search")],
+            },
+            aliases: HashMap::new(),
+            limits: RuntimeLimits::default(),
+        };
+        let error = QuickJsRuntime
+            .execute(input, Arc::new(MemoryInvoker::default()))
+            .await
+            .unwrap_err();
+        assert_eq!(error.phase, FailurePhase::Runtime);
+        assert!(error.message.contains("reserved"));
     }
 
     #[tokio::test(flavor = "multi_thread")]
