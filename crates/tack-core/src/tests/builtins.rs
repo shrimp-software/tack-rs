@@ -25,6 +25,38 @@ async fn builtins_search_and_describe() {
 }
 
 #[tokio::test]
+async fn builtins_search_indexes_tags_and_annotations() {
+    let registry = registry(vec![
+        ToolDescriptor::new("browser.storage.clear", "clear")
+            .with_description("Clear browser storage")
+            .with_tag("storage")
+            .with_destructive(true)
+            .with_capability("browser.storage"),
+        ToolDescriptor::new("browser.info", "info")
+            .with_description("Read page info")
+            .with_read_only(true)
+            .with_tag("page"),
+    ]);
+    let invoker = BuiltinAwareInvoker::new(registry, Arc::new(TestInvoker::default()));
+
+    let by_tag = invoker
+        .call(ToolCall {
+            path: "tools.search".to_string(),
+            input: json!({"query":"storage","limit":5}),
+        })
+        .await;
+    assert_eq!(by_tag.data.unwrap()[0]["path"], "browser.storage.clear");
+
+    let by_annotation = invoker
+        .call(ToolCall {
+            path: "tools.search".to_string(),
+            input: json!({"query":"read only","limit":5}),
+        })
+        .await;
+    assert_eq!(by_annotation.data.unwrap()[0]["path"], "browser.info");
+}
+
+#[tokio::test]
 async fn builtin_invoke_dispatches_to_target_tool() {
     let registry = registry(vec![ToolDescriptor::new("eoka.eval", "eval")]);
     let invoker = BuiltinAwareInvoker::new(

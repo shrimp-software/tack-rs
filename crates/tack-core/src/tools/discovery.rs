@@ -53,11 +53,34 @@ fn score_tool(tool: &ToolDescriptor, terms: &[String]) -> Option<usize> {
     if terms.is_empty() {
         return Some(1);
     }
+    let annotations = tool.annotations();
+    let annotation_flags = [
+        annotations
+            .read_only
+            .map(|value| if value { "read_only" } else { "write_capable" }),
+        annotations
+            .destructive
+            .map(|value| if value { "destructive" } else { "safe" }),
+        annotations.idempotent.map(|value| {
+            if value {
+                "idempotent"
+            } else {
+                "non_idempotent"
+            }
+        }),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
     let text = [
         tool.path(),
         tool.name(),
         tool.title().unwrap_or_default(),
         tool.description().unwrap_or_default(),
+        annotations.capability.as_deref().unwrap_or_default(),
+        annotations.version.as_deref().unwrap_or_default(),
+        &tool.tags().join(" "),
+        &annotation_flags.join(" "),
     ]
     .join(" ")
     .to_ascii_lowercase();

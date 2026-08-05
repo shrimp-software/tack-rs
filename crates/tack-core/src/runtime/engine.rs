@@ -2,7 +2,7 @@ use super::{
     CodeRuntime, ExecutionResult, FailurePhase, RuntimeFailure, RuntimeInput, RuntimeLimits,
 };
 use crate::ident::validate_aliases;
-use crate::tools::{PolicyAwareInvoker, ToolInvoker, ToolPolicy, ToolRegistry};
+use crate::tools::{PolicyAwareInvoker, ToolCatalog, ToolInvoker, ToolPolicy, ToolRegistry};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -29,6 +29,11 @@ where
             limits: RuntimeLimits::default(),
             aliases: HashMap::new(),
         }
+    }
+
+    pub fn from_catalog(catalog: ToolCatalog, runtime: R) -> Self {
+        let registry = catalog.registry();
+        Self::new(registry, runtime, Arc::new(catalog))
     }
 
     pub fn with_limits(mut self, limits: RuntimeLimits) -> Self {

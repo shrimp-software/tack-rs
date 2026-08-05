@@ -4,6 +4,16 @@
 //! contracts from `tack-core`. It uses Oxc to strip TypeScript syntax,
 //! evaluates code in an isolated QuickJS context, exposes host tool calls,
 //! `emit`, and `console.log`, and enforces runtime and payload limits.
+//!
+//! Run the examples from the workspace root with:
+//!
+//! ```text
+//! cargo run -p tack-runtime-quickjs --example catalog
+//! cargo run -p tack-runtime-quickjs --example dynamic_adapter
+//! cargo run -p tack-runtime-quickjs --example basic
+//! cargo run -p tack-runtime-quickjs --example discovery
+//! cargo run -p tack-runtime-quickjs --example aliases_policy_limits
+//! ```
 
 mod runtime;
 

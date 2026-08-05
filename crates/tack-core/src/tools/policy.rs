@@ -1,4 +1,4 @@
-use crate::tools::{ToolCall, ToolCallOutput, ToolInvoker, ToolPolicy};
+use crate::tools::{ToolCall, ToolCallOutput, ToolDescriptor, ToolInvoker, ToolPolicy};
 use async_trait::async_trait;
 use std::sync::Arc;
 
@@ -21,6 +21,30 @@ impl ToolPolicy for DenyListPolicy {
                     .strip_suffix(".*")
                     .is_some_and(|prefix| path == prefix || path.starts_with(&format!("{prefix}.")))
         })
+    }
+}
+
+/// Tool policy that allows only descriptors matching a predicate.
+pub struct DescriptorPolicy<F> {
+    predicate: F,
+}
+
+impl<F> DescriptorPolicy<F> {
+    pub fn new(predicate: F) -> Self {
+        Self { predicate }
+    }
+}
+
+impl<F> ToolPolicy for DescriptorPolicy<F>
+where
+    F: Fn(&ToolDescriptor) -> bool + Send + Sync,
+{
+    fn is_allowed(&self, _path: &str) -> bool {
+        true
+    }
+
+    fn is_descriptor_allowed(&self, descriptor: &ToolDescriptor) -> bool {
+        (self.predicate)(descriptor)
     }
 }
 
