@@ -6,7 +6,7 @@ async fn policy_denies_exact_and_wildcard_paths() {
         "example.secret".to_string(),
         "example.admin.*".to_string(),
     ]));
-    let invoker = PolicyAwareInvoker::new(policy, Arc::new(MemoryInvoker::default()));
+    let invoker = PolicyAwareInvoker::new(policy, Arc::new(TestInvoker::default()));
     let exact = invoker
         .call(ToolCall {
             path: "example.secret".to_string(),
@@ -28,10 +28,8 @@ async fn policy_denies_exact_and_wildcard_paths() {
 #[tokio::test]
 async fn registry_denies_undeclared_tool_paths() {
     let invoker = RegistryAwareInvoker::new(
-        ToolRegistry {
-            tools: vec![ToolDescriptor::new("example.allowed", "allowed")],
-        },
-        Arc::new(MemoryInvoker::new(HashMap::from([(
+        registry(vec![ToolDescriptor::new("example.allowed", "allowed")]),
+        Arc::new(TestInvoker::new(HashMap::from([(
             "example.hidden".to_string(),
             json!({"leaked": true}),
         )]))),

@@ -70,9 +70,7 @@ async fn console_log_formats_multiple_arguments() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn tool_request_serialization_errors_return_envelopes() {
-    let registry = ToolRegistry {
-        tools: vec![ToolDescriptor::new("example.echo", "echo")],
-    };
+    let registry = registry(vec![ToolDescriptor::new("example.echo", "echo")]);
     let engine = ExecutionEngine::new(
         registry,
         QuickJsRuntime,

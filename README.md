@@ -52,9 +52,16 @@ impl ToolInvoker for HostTools {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let registry = ToolRegistry {
-        tools: vec![ToolDescriptor::new("inventory.lookup", "lookup")],
-    };
+    let registry = ToolRegistry::from_tools(vec![
+        ToolDescriptor::new("inventory.lookup", "lookup")
+            .with_description("Look up inventory by SKU")
+            .with_input_schema(json!({
+                "type": "object",
+                "required": ["sku"],
+                "properties": { "sku": { "type": "string" } }
+            })),
+    ])
+    .unwrap();
     let engine = ExecutionEngine::new(registry, QuickJsRuntime, Arc::new(HostTools));
 
     let output = engine
@@ -87,6 +94,11 @@ API:
 - `emit(value)`
 - `console.log(...values)`
 
+Lazy calls resolve by dotted path at call time: `tools.inventory.lookup(input)`
+calls the host tool registered as `inventory.lookup`. `tools.search(...)` and
+`tools.describe.tool(...)` let agents discover and inspect tools on demand, so
+hosts do not need to print every full tool schema into context up front.
+
 Tool calls through `tools.*` return envelopes:
 
 ```json
@@ -99,7 +111,7 @@ envelopes for lower-level `tools.*` calls.
 
 Tool paths must be valid dotted JavaScript identifiers, such as
 `inventory.lookup` or `browser.tabs.list`. Built-in paths under `tools.*` are
-reserved and cannot be registered by host manifests.
+reserved and cannot be registered by host registries.
 
 ## Serialization
 

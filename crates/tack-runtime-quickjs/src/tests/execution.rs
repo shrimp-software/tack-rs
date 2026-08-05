@@ -2,9 +2,7 @@ use super::*;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn executes_typescript_and_tools() {
-    let registry = ToolRegistry {
-        tools: vec![ToolDescriptor::new("example.echo", "echo")],
-    };
+    let registry = registry(vec![ToolDescriptor::new("example.echo", "echo")]);
     let mut outputs = HashMap::new();
     outputs.insert("example.echo".to_string(), json!({"message":"ok"}));
     let engine = ExecutionEngine::new(
@@ -21,9 +19,7 @@ async fn executes_typescript_and_tools() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn aliases_return_data_directly() {
-    let registry = ToolRegistry {
-        tools: vec![ToolDescriptor::new("eoka.info", "info")],
-    };
+    let registry = registry(vec![ToolDescriptor::new("eoka.info", "info")]);
     let mut outputs = HashMap::new();
     outputs.insert("eoka.info".to_string(), json!({"url":"about:blank"}));
     let engine = ExecutionEngine::new(
@@ -39,9 +35,7 @@ async fn aliases_return_data_directly() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn tools_search_uses_builtin_path() {
-    let registry = ToolRegistry {
-        tools: vec![ToolDescriptor::new("example.fetch", "fetch")],
-    };
+    let registry = registry(vec![ToolDescriptor::new("example.fetch", "fetch")]);
     let engine = ExecutionEngine::new(registry, QuickJsRuntime, Arc::new(MemoryInvoker::default()));
     let result = engine
         .execute("return (await tools.search({query:'fetch',limit:1})).data[0].path;")
@@ -52,12 +46,10 @@ async fn tools_search_uses_builtin_path() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn policy_filters_builtin_discovery_in_runtime() {
-    let registry = ToolRegistry {
-        tools: vec![
-            ToolDescriptor::new("example.visible", "visible"),
-            ToolDescriptor::new("example.secret", "secret"),
-        ],
-    };
+    let registry = registry(vec![
+        ToolDescriptor::new("example.visible", "visible"),
+        ToolDescriptor::new("example.secret", "secret"),
+    ]);
     let engine = ExecutionEngine::new(registry, QuickJsRuntime, Arc::new(MemoryInvoker::default()))
         .with_policy(Arc::new(DenyListPolicy::new(vec![
             "example.secret".to_string(),
@@ -78,9 +70,7 @@ async fn policy_filters_builtin_discovery_in_runtime() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn awaits_real_async_tool_promises() {
-    let registry = ToolRegistry {
-        tools: vec![ToolDescriptor::new("example.slow", "slow")],
-    };
+    let registry = registry(vec![ToolDescriptor::new("example.slow", "slow")]);
     let engine = ExecutionEngine::new(registry, QuickJsRuntime, Arc::new(DelayedInvoker));
     let result = engine
         .execute("const a = await tools.example.slow({value: 2}); const b = await tools.example.slow({value: 3}); return a.data.value + b.data.value;")
@@ -93,9 +83,7 @@ async fn awaits_real_async_tool_promises() {
 async fn direct_runtime_use_enforces_registry_and_builtins() {
     let input = RuntimeInput {
         source: "const search = await tools.search({query:'allowed',limit:1}); const hidden = await tools.example.hidden({}); return {search: search.data[0].path, hidden: hidden.error.code};".to_string(),
-        registry: ToolRegistry {
-            tools: vec![ToolDescriptor::new("example.allowed", "allowed")],
-        },
+        registry: registry(vec![ToolDescriptor::new("example.allowed", "allowed")]),
         aliases: HashMap::new(),
         limits: RuntimeLimits::default(),
     };
@@ -117,11 +105,13 @@ async fn direct_runtime_use_enforces_registry_and_builtins() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn direct_runtime_use_rejects_reserved_registry_paths() {
+    let registry = serde_json::from_value(json!({
+        "tools": [{"path": "tools.search", "name": "search"}]
+    }))
+    .unwrap();
     let input = RuntimeInput {
         source: "return 1;".to_string(),
-        registry: ToolRegistry {
-            tools: vec![ToolDescriptor::new("tools.search", "search")],
-        },
+        registry,
         aliases: HashMap::new(),
         limits: RuntimeLimits::default(),
     };
@@ -135,9 +125,7 @@ async fn direct_runtime_use_rejects_reserved_registry_paths() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn alias_failures_throw_runtime_errors() {
-    let registry = ToolRegistry {
-        tools: vec![ToolDescriptor::new("eoka.fail", "fail")],
-    };
+    let registry = registry(vec![ToolDescriptor::new("eoka.fail", "fail")]);
     let engine = ExecutionEngine::new(registry, QuickJsRuntime, Arc::new(FailingInvoker))
         .with_alias("eoka", "eoka");
     let result = engine.execute("await eoka.fail(); return 1;").await;

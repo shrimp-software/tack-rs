@@ -4,8 +4,8 @@ use super::*;
 async fn engine_wraps_runtime_result() {
     let engine = ExecutionEngine::new(
         ToolRegistry::default(),
-        StaticRuntime::ok(json!(5)),
-        Arc::new(MemoryInvoker::default()),
+        TestRuntime::ok(json!(5)),
+        Arc::new(TestInvoker::default()),
     );
     let result = engine.execute("return 5").await;
     assert!(result.ok);
@@ -16,8 +16,8 @@ async fn engine_wraps_runtime_result() {
 async fn invalid_aliases_fail_before_runtime_execution() {
     let engine = ExecutionEngine::new(
         ToolRegistry::default(),
-        StaticRuntime::ok(json!(5)),
-        Arc::new(MemoryInvoker::default()),
+        TestRuntime::ok(json!(5)),
+        Arc::new(TestInvoker::default()),
     )
     .with_alias("tools", "eoka");
     let result = engine.execute("return 5").await;
@@ -62,8 +62,8 @@ fn runtime_limits_reject_zero_values() {
 async fn execution_engine_rejects_invalid_runtime_limits() {
     let engine = ExecutionEngine::new(
         ToolRegistry::default(),
-        StaticRuntime::ok(json!(5)),
-        Arc::new(MemoryInvoker::default()),
+        TestRuntime::ok(json!(5)),
+        Arc::new(TestInvoker::default()),
     )
     .with_limits(RuntimeLimits {
         timeout_ms: 0,

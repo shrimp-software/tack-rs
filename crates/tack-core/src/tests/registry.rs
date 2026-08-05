@@ -1,13 +1,36 @@
 use super::*;
 
+#[test]
+fn descriptor_builders_set_metadata() {
+    let descriptor = ToolDescriptor::new("eoka.eval", "eval")
+        .with_tool_id("tool-1")
+        .with_title("Evaluate")
+        .with_description("Run code")
+        .with_input_schema(json!({"type":"object"}))
+        .with_output_schema(json!({"type":"string"}))
+        .with_tag("browser")
+        .with_tags(["page", "code"]);
+
+    assert_eq!(descriptor.path(), "eoka.eval");
+    assert_eq!(descriptor.tool_id(), Some("tool-1"));
+    assert_eq!(descriptor.name(), "eval");
+    assert_eq!(descriptor.title(), Some("Evaluate"));
+    assert_eq!(descriptor.description(), Some("Run code"));
+    assert_eq!(descriptor.input_schema(), &json!({"type":"object"}));
+    assert_eq!(descriptor.output_schema(), &json!({"type":"string"}));
+    assert_eq!(descriptor.tags(), &["browser", "page", "code"]);
+}
+
 #[tokio::test]
 async fn execution_engine_rejects_reserved_tool_paths_before_runtime_execution() {
+    let registry = serde_json::from_value(json!({
+        "tools": [{"path": "tools.search", "name": "search"}]
+    }))
+    .unwrap();
     let engine = ExecutionEngine::new(
-        ToolRegistry {
-            tools: vec![ToolDescriptor::new("tools.search", "search")],
-        },
-        StaticRuntime::ok(json!(5)),
-        Arc::new(MemoryInvoker::default()),
+        registry,
+        TestRuntime::ok(json!(5)),
+        Arc::new(TestInvoker::default()),
     );
     let result = engine.execute("return 5").await;
     assert!(!result.ok);
@@ -18,69 +41,85 @@ async fn execution_engine_rejects_reserved_tool_paths_before_runtime_execution()
 }
 
 #[test]
-fn registry_validation_rejects_invalid_tool_paths() {
-    let registry = ToolRegistry {
-        tools: vec![ToolDescriptor::new("eoka.fetch-url", "fetch-url")],
-    };
+fn registry_from_tools_rejects_invalid_tool_paths() {
     assert!(matches!(
-        registry.validate(),
+        ToolRegistry::from_tools(vec![ToolDescriptor::new("eoka.fetch-url", "fetch-url")]),
         Err(RegistryValidationError::InvalidToolPath { .. })
     ));
 }
 
 #[test]
-fn registry_imports_tack_manifest_tools() {
-    let registry = ToolRegistry::from_manifest_value(&json!({
-        "version":"0.1",
-        "generatedAt":"2026-01-01T00:00:00.000Z",
-        "servers":{},
-        "tools":{
-            "grafana.list_datasources":{
-                "id":"grafana.list_datasources",
-                "serverId":"grafana",
-                "namespaceName":"grafana",
-                "sdkName":"list_datasources",
-                "upstreamName":"list_datasources",
-                "description":"List data sources",
-                "inputSchema":{"type":"object","additionalProperties":false}
-            }
-        }
-    }))
-    .unwrap();
-    assert_eq!(registry.tools[0].path, "grafana.list_datasources");
-    assert_eq!(
-        registry.tools[0].tool_id.as_deref(),
-        Some("grafana.list_datasources")
-    );
+fn registry_extend_accepts_valid_tools() {
+    let mut registry = ToolRegistry::new();
+    registry
+        .extend([
+            ToolDescriptor::new("example.one", "one"),
+            ToolDescriptor::new("example.two", "two"),
+        ])
+        .unwrap();
+
+    assert_eq!(registry.len(), 2);
+    assert_eq!(registry.as_slice()[0].path(), "example.one");
+    assert_eq!(registry.as_slice()[1].path(), "example.two");
 }
 
 #[test]
-fn registry_import_rejects_duplicate_sdk_paths() {
-    let error = ToolRegistry::from_manifest_value(&json!({
-        "tools": {
-            "left": {"namespaceName":"eoka","sdkName":"eval"},
-            "right": {"namespaceName":"eoka","sdkName":"eval"}
-        }
-    }))
-    .unwrap_err();
+fn registry_extend_rejects_reserved_paths_without_mutating() {
+    let mut registry = registry(vec![ToolDescriptor::new("example.one", "one")]);
+    let error = registry
+        .extend([ToolDescriptor::new("tools.search", "search")])
+        .unwrap_err();
+
     assert!(matches!(
         error,
-        ManifestImportError::Registry(RegistryValidationError::DuplicateToolPath(path))
-            if path == "eoka.eval"
+        RegistryValidationError::ReservedToolPath(path) if path == "tools.search"
     ));
+    assert_eq!(registry.len(), 1);
+    assert!(registry.contains_path("example.one"));
 }
 
 #[test]
-fn registry_import_rejects_reserved_sdk_paths() {
-    let error = ToolRegistry::from_manifest_value(&json!({
-        "tools": {
-            "left": {"namespaceName":"tools","sdkName":"search"}
-        }
-    }))
-    .unwrap_err();
+fn registry_extend_rejects_invalid_paths_without_mutating() {
+    let mut registry = registry(vec![ToolDescriptor::new("example.one", "one")]);
+    let error = registry
+        .extend([ToolDescriptor::new("example.bad-path", "bad-path")])
+        .unwrap_err();
+
     assert!(matches!(
         error,
-        ManifestImportError::Registry(RegistryValidationError::ReservedToolPath(path))
-            if path == "tools.search"
+        RegistryValidationError::InvalidToolPath { .. }
     ));
+    assert_eq!(registry.len(), 1);
+}
+
+#[test]
+fn registry_extend_rejects_duplicate_existing_paths_without_mutating() {
+    let mut registry = registry(vec![ToolDescriptor::new("example.one", "one")]);
+    let error = registry
+        .extend([ToolDescriptor::new("example.one", "one")])
+        .unwrap_err();
+
+    assert!(matches!(
+        error,
+        RegistryValidationError::DuplicateToolPath(path) if path == "example.one"
+    ));
+    assert_eq!(registry.len(), 1);
+}
+
+#[test]
+fn registry_extend_rejects_duplicate_batch_paths_without_mutating() {
+    let mut registry = registry(vec![ToolDescriptor::new("example.one", "one")]);
+    let error = registry
+        .extend([
+            ToolDescriptor::new("example.two", "two"),
+            ToolDescriptor::new("example.two", "two"),
+        ])
+        .unwrap_err();
+
+    assert!(matches!(
+        error,
+        RegistryValidationError::DuplicateToolPath(path) if path == "example.two"
+    ));
+    assert_eq!(registry.len(), 1);
+    assert!(!registry.contains_path("example.two"));
 }

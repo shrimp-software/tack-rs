@@ -29,7 +29,6 @@ pub fn search_tools(registry: &ToolRegistry, query: &str, limit: usize) -> Vec<S
         .collect::<Vec<_>>();
 
     let mut hits = registry
-        .tools
         .iter()
         .filter_map(|tool| score_tool(tool, &terms).map(|score| hit(tool, score)))
         .collect::<Vec<_>>();
@@ -44,8 +43,8 @@ pub fn describe_tool(registry: &ToolRegistry, path: &str) -> Option<ToolDescript
         descriptor: descriptor.clone(),
         type_signature: format!(
             "(input: {}): Promise<ToolCallOutput<{}>>",
-            super::type_signature::schema_to_type(&descriptor.input_schema),
-            super::type_signature::schema_to_type(&descriptor.output_schema)
+            super::type_signature::schema_to_type(descriptor.input_schema()),
+            super::type_signature::schema_to_type(descriptor.output_schema())
         ),
     })
 }
@@ -55,17 +54,17 @@ fn score_tool(tool: &ToolDescriptor, terms: &[String]) -> Option<usize> {
         return Some(1);
     }
     let text = [
-        tool.path.as_str(),
-        tool.name.as_str(),
-        tool.title.as_deref().unwrap_or_default(),
-        tool.description.as_deref().unwrap_or_default(),
+        tool.path(),
+        tool.name(),
+        tool.title().unwrap_or_default(),
+        tool.description().unwrap_or_default(),
     ]
     .join(" ")
     .to_ascii_lowercase();
     let score = terms
         .iter()
         .map(|term| {
-            if tool.path.eq_ignore_ascii_case(term) || tool.name.eq_ignore_ascii_case(term) {
+            if tool.path().eq_ignore_ascii_case(term) || tool.name().eq_ignore_ascii_case(term) {
                 10
             } else if text.contains(term) {
                 3
@@ -79,10 +78,10 @@ fn score_tool(tool: &ToolDescriptor, terms: &[String]) -> Option<usize> {
 
 fn hit(tool: &ToolDescriptor, score: usize) -> SearchHit {
     SearchHit {
-        path: tool.path.clone(),
-        name: tool.name.clone(),
-        title: tool.title.clone(),
-        description: tool.description.clone(),
+        path: tool.path().to_string(),
+        name: tool.name().to_string(),
+        title: tool.title().map(str::to_string),
+        description: tool.description().map(str::to_string),
         score,
     }
 }

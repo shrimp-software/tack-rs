@@ -1,12 +1,38 @@
+use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::{collections::HashMap, sync::Arc};
 use tack_core::{
-    ExecutionEngine, FailurePhase, MemoryInvoker, RuntimeLimits, ToolCallOutput, ToolDescriptor,
-    ToolRegistry,
+    ExecutionEngine, FailurePhase, RuntimeLimits, ToolCall, ToolCallOutput, ToolDescriptor,
+    ToolInvoker, ToolRegistry,
 };
 use tack_runtime_quickjs::QuickJsRuntime;
 
 const CONTRACT: &str = include_str!("fixtures/codemode-v1.fixture.json");
+
+struct MemoryInvoker {
+    outputs: HashMap<String, Value>,
+}
+
+impl MemoryInvoker {
+    fn new(outputs: HashMap<String, Value>) -> Self {
+        Self { outputs }
+    }
+}
+
+#[async_trait]
+impl ToolInvoker for MemoryInvoker {
+    async fn call(&self, call: ToolCall) -> ToolCallOutput {
+        self.outputs
+            .get(&call.path)
+            .cloned()
+            .map(ToolCallOutput::data)
+            .unwrap_or_else(|| ToolCallOutput::failure(format!("Unknown tool: {}", call.path)))
+    }
+}
+
+fn registry(tools: Vec<ToolDescriptor>) -> ToolRegistry {
+    ToolRegistry::from_tools(tools).unwrap()
+}
 
 #[test]
 fn defaults_match_contract_fixture() {
@@ -90,9 +116,7 @@ fn tool_envelopes_match_contract_fixture() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn runtime_executes_contract_shape() {
-    let registry = ToolRegistry {
-        tools: vec![ToolDescriptor::new("example.echo", "echo")],
-    };
+    let registry = registry(vec![ToolDescriptor::new("example.echo", "echo")]);
     let invoker = MemoryInvoker::new(HashMap::from([(
         "example.echo".to_string(),
         json!({"value": 3}),

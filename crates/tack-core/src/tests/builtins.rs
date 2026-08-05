@@ -2,19 +2,15 @@ use super::*;
 
 #[tokio::test]
 async fn builtins_search_and_describe() {
-    let registry = ToolRegistry {
-        tools: vec![ToolDescriptor {
-            path: "eoka.eval".to_string(),
-            tool_id: None,
-            name: "eval".to_string(),
-            title: Some("Evaluate JavaScript".to_string()),
-            description: Some("Run JavaScript in the active page".to_string()),
-            input_schema: json!({"type":"object","required":["code"],"properties":{"code":{"type":"string"}}}),
-            output_schema: json!({"type":"object","properties":{"value":{"type":"string"}}}),
-            tags: vec!["browser".to_string()],
-        }],
-    };
-    let invoker = BuiltinAwareInvoker::new(registry.clone(), Arc::new(MemoryInvoker::default()));
+    let registry = registry(vec![
+        ToolDescriptor::new("eoka.eval", "eval")
+            .with_title("Evaluate JavaScript")
+            .with_description("Run JavaScript in the active page")
+            .with_input_schema(json!({"type":"object","required":["code"],"properties":{"code":{"type":"string"}}}))
+            .with_output_schema(json!({"type":"object","properties":{"value":{"type":"string"}}}))
+            .with_tag("browser"),
+    ]);
+    let invoker = BuiltinAwareInvoker::new(registry.clone(), Arc::new(TestInvoker::default()));
     let search = invoker
         .call(ToolCall {
             path: "tools.search".to_string(),
@@ -30,12 +26,10 @@ async fn builtins_search_and_describe() {
 
 #[tokio::test]
 async fn builtin_invoke_dispatches_to_target_tool() {
-    let registry = ToolRegistry {
-        tools: vec![ToolDescriptor::new("eoka.eval", "eval")],
-    };
+    let registry = registry(vec![ToolDescriptor::new("eoka.eval", "eval")]);
     let invoker = BuiltinAwareInvoker::new(
         registry,
-        Arc::new(MemoryInvoker::new(HashMap::from([(
+        Arc::new(TestInvoker::new(HashMap::from([(
             "eoka.eval".to_string(),
             json!({"value": 11}),
         )]))),
@@ -60,16 +54,14 @@ async fn builtin_invoke_dispatches_to_target_tool() {
 
 #[tokio::test]
 async fn policy_filters_discovery_registry() {
-    let registry = ToolRegistry {
-        tools: vec![
-            ToolDescriptor::new("example.visible", "visible"),
-            ToolDescriptor::new("example.secret", "secret"),
-        ],
-    };
+    let registry = registry(vec![
+        ToolDescriptor::new("example.visible", "visible"),
+        ToolDescriptor::new("example.secret", "secret"),
+    ]);
     let engine = ExecutionEngine::new(
         registry,
-        StaticRuntime::ok(json!(null)),
-        Arc::new(MemoryInvoker::default()),
+        TestRuntime::ok(json!(null)),
+        Arc::new(TestInvoker::default()),
     )
     .with_policy(Arc::new(DenyListPolicy::new(vec![
         "example.secret".to_string(),

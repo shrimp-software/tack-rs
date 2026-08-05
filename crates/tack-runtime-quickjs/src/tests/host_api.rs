@@ -19,9 +19,7 @@ async fn ambient_network_and_process_are_absent() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn denies_unregistered_tool_paths_before_host_call() {
-    let registry = ToolRegistry {
-        tools: vec![ToolDescriptor::new("example.allowed", "allowed")],
-    };
+    let registry = registry(vec![ToolDescriptor::new("example.allowed", "allowed")]);
     let engine = ExecutionEngine::new(
         registry,
         QuickJsRuntime,
@@ -39,9 +37,7 @@ async fn denies_unregistered_tool_paths_before_host_call() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn preserves_explicit_null_tool_input() {
-    let registry = ToolRegistry {
-        tools: vec![ToolDescriptor::new("example.echo", "echo")],
-    };
+    let registry = registry(vec![ToolDescriptor::new("example.echo", "echo")]);
     let engine = ExecutionEngine::new(registry, QuickJsRuntime, Arc::new(EchoInputInvoker));
     let result = engine
         .execute("return (await tools.example.echo(null)).data;")
@@ -52,9 +48,7 @@ async fn preserves_explicit_null_tool_input() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn invokes_paths_that_collide_with_proxy_then() {
-    let registry = ToolRegistry {
-        tools: vec![ToolDescriptor::new("example.then", "then")],
-    };
+    let registry = registry(vec![ToolDescriptor::new("example.then", "then")]);
     let engine = ExecutionEngine::new(registry, QuickJsRuntime, Arc::new(EchoInputInvoker));
     let result = engine
         .execute("return (await tools.invoke('example.then', {value: 9})).data.value;")
@@ -80,9 +74,7 @@ async fn invoke_rejects_missing_tool_paths_locally() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn hides_mutable_host_bindings_from_user_code() {
-    let registry = ToolRegistry {
-        tools: vec![ToolDescriptor::new("example.echo", "echo")],
-    };
+    let registry = registry(vec![ToolDescriptor::new("example.echo", "echo")]);
     let engine = ExecutionEngine::new(registry, QuickJsRuntime, Arc::new(EchoInputInvoker));
     let result = engine
         .execute(
@@ -95,9 +87,7 @@ async fn hides_mutable_host_bindings_from_user_code() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn captures_json_intrinsics_before_user_code_runs() {
-    let registry = ToolRegistry {
-        tools: vec![ToolDescriptor::new("example.echo", "echo")],
-    };
+    let registry = registry(vec![ToolDescriptor::new("example.echo", "echo")]);
     let engine = ExecutionEngine::new(registry, QuickJsRuntime, Arc::new(EchoInputInvoker));
     let result = engine
         .execute(
@@ -110,9 +100,7 @@ async fn captures_json_intrinsics_before_user_code_runs() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn captures_prototype_intrinsics_before_user_code_runs() {
-    let registry = ToolRegistry {
-        tools: vec![ToolDescriptor::new("eoka.echo", "echo")],
-    };
+    let registry = registry(vec![ToolDescriptor::new("eoka.echo", "echo")]);
     let engine = ExecutionEngine::new(registry, QuickJsRuntime, Arc::new(EchoInputInvoker))
         .with_alias("eoka", "eoka");
     let result = engine

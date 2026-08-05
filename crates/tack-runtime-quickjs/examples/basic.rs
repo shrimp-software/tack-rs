@@ -23,9 +23,16 @@ impl ToolInvoker for HostTools {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let registry = ToolRegistry {
-        tools: vec![ToolDescriptor::new("inventory.lookup", "lookup")],
-    };
+    let registry = ToolRegistry::from_tools(vec![
+        ToolDescriptor::new("inventory.lookup", "lookup")
+            .with_description("Look up inventory by SKU")
+            .with_input_schema(json!({
+                "type": "object",
+                "required": ["sku"],
+                "properties": { "sku": { "type": "string" } }
+            })),
+    ])
+    .unwrap();
     let engine = ExecutionEngine::new(registry, QuickJsRuntime, Arc::new(HostTools));
 
     let output = engine

@@ -38,9 +38,7 @@ async fn enforces_output_limit() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn enforces_tool_call_limit() {
-    let registry = ToolRegistry {
-        tools: vec![ToolDescriptor::new("example.echo", "echo")],
-    };
+    let echo_registry = registry(vec![ToolDescriptor::new("example.echo", "echo")]);
     let mut outputs = HashMap::new();
     outputs.insert("example.echo".to_string(), json!({"ok": true}));
     let limits = RuntimeLimits {
@@ -48,7 +46,7 @@ async fn enforces_tool_call_limit() {
         ..RuntimeLimits::default()
     };
     let engine = ExecutionEngine::new(
-        registry,
+        echo_registry,
         QuickJsRuntime,
         Arc::new(MemoryInvoker::new(outputs)),
     )
@@ -62,9 +60,7 @@ async fn enforces_tool_call_limit() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn enforces_tool_payload_limits() {
-    let registry = ToolRegistry {
-        tools: vec![ToolDescriptor::new("example.echo", "echo")],
-    };
+    let request_registry = registry(vec![ToolDescriptor::new("example.echo", "echo")]);
     let mut outputs = HashMap::new();
     outputs.insert(
         "example.echo".to_string(),
@@ -76,7 +72,7 @@ async fn enforces_tool_payload_limits() {
         ..RuntimeLimits::default()
     };
     let engine = ExecutionEngine::new(
-        registry,
+        request_registry,
         QuickJsRuntime,
         Arc::new(MemoryInvoker::new(outputs)),
     )
@@ -90,9 +86,7 @@ async fn enforces_tool_payload_limits() {
     assert_eq!(request["error"]["message"], "tool request too large");
 
     let engine = ExecutionEngine::new(
-        ToolRegistry {
-            tools: vec![ToolDescriptor::new("example.echo", "echo")],
-        },
+        registry(vec![ToolDescriptor::new("example.echo", "echo")]),
         QuickJsRuntime,
         Arc::new(MemoryInvoker::new(HashMap::from([(
             "example.echo".to_string(),
@@ -146,9 +140,7 @@ async fn direct_runtime_rejects_invalid_runtime_limits_before_timeout() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn enforces_tool_call_timeout() {
-    let registry = ToolRegistry {
-        tools: vec![ToolDescriptor::new("example.hang", "hang")],
-    };
+    let registry = registry(vec![ToolDescriptor::new("example.hang", "hang")]);
     let engine = ExecutionEngine::new(registry, QuickJsRuntime, Arc::new(HangingInvoker))
         .with_limits(RuntimeLimits {
             tool_call_timeout_ms: 10,

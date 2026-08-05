@@ -9,6 +9,7 @@
 - Centralized QuickJS host binding names and split behavior-focused unit tests.
 - Split runtime internals further and added registry constructors.
 - Named the host-independent contract crate `tack-core`.
+- Tightened registry and descriptor construction with private fields, builders, and all-or-nothing extension.
 
 ## 1.0.4
 

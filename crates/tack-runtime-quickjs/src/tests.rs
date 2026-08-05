@@ -11,9 +11,35 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tack_core::{
-    CodeRuntime, DenyListPolicy, ExecutionEngine, FailurePhase, MemoryInvoker, RuntimeInput,
-    RuntimeLimits, ToolCall, ToolCallOutput, ToolDescriptor, ToolInvoker, ToolRegistry,
+    CodeRuntime, DenyListPolicy, ExecutionEngine, FailurePhase, RuntimeInput, RuntimeLimits,
+    ToolCall, ToolCallOutput, ToolDescriptor, ToolInvoker, ToolRegistry,
 };
+
+#[derive(Default)]
+struct MemoryInvoker {
+    outputs: HashMap<String, Value>,
+}
+
+impl MemoryInvoker {
+    fn new(outputs: HashMap<String, Value>) -> Self {
+        Self { outputs }
+    }
+}
+
+#[async_trait]
+impl ToolInvoker for MemoryInvoker {
+    async fn call(&self, call: ToolCall) -> ToolCallOutput {
+        self.outputs
+            .get(&call.path)
+            .cloned()
+            .map(ToolCallOutput::data)
+            .unwrap_or_else(|| ToolCallOutput::failure(format!("Unknown tool: {}", call.path)))
+    }
+}
+
+fn registry(tools: Vec<ToolDescriptor>) -> ToolRegistry {
+    ToolRegistry::from_tools(tools).unwrap()
+}
 
 struct DelayedInvoker;
 
