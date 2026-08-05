@@ -7,7 +7,7 @@
 - Aligned the packaged example with the README host-tool example.
 - Added `ExecutionResult` constructors and clearer documentation for utility runtime/invoker types.
 - Centralized QuickJS host binding names and split behavior-focused unit tests.
-- Split runtime internals further, added registry constructors, and moved release steps into `RELEASING.md`.
+- Split runtime internals further and added registry constructors.
 - Named the host-independent contract crate `tack-core`.
 
 ## 1.0.4

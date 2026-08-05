@@ -165,7 +165,3 @@ cargo test --workspace
 cargo doc --workspace --no-deps
 cargo package --workspace
 ```
-
-## Publishing
-
-See [RELEASING.md](RELEASING.md).
