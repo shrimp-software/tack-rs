@@ -44,8 +44,8 @@ pub fn describe_tool(registry: &ToolRegistry, path: &str) -> Option<ToolDescript
         descriptor: descriptor.clone(),
         type_signature: format!(
             "(input: {}): Promise<ToolCallOutput<{}>>",
-            super::schema::schema_to_type(&descriptor.input_schema),
-            super::schema::schema_to_type(&descriptor.output_schema)
+            super::type_signature::schema_to_type(&descriptor.input_schema),
+            super::type_signature::schema_to_type(&descriptor.output_schema)
         ),
     })
 }

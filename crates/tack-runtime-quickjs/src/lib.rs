@@ -36,7 +36,6 @@ impl CodeRuntime for QuickJsRuntime {
         input: RuntimeInput,
         invoker: Arc<dyn ToolInvoker>,
     ) -> Result<RuntimeOutput, RuntimeFailure> {
-        input.limits.validate().map_err(runtime_limits_error)?;
         execute_async(input, invoker).await
     }
 }

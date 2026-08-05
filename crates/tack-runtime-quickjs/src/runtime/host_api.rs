@@ -1,4 +1,4 @@
-use crate::runtime::runtime_error;
+use crate::runtime::{CALL_JSON, EMIT_JSON, LOG_LINE, runtime_error};
 use rquickjs::{
     Ctx,
     prelude::{Async, Func},
@@ -21,7 +21,7 @@ pub(crate) fn install_host_api(
     let captured_for_emit = captured.clone();
     global
         .set(
-            "__tackEmitJson",
+            EMIT_JSON,
             Func::from(move |value: String| {
                 captured_for_emit.emit_json(&value);
             }),
@@ -31,7 +31,7 @@ pub(crate) fn install_host_api(
     let captured_for_log = captured.clone();
     global
         .set(
-            "__tackLogLine",
+            LOG_LINE,
             Func::from(move |value: String| {
                 captured_for_log.log_line(value);
             }),
@@ -41,7 +41,7 @@ pub(crate) fn install_host_api(
     let handler = ToolCallHandler::new(invoker, call_count, input);
     global
         .set(
-            "__tackCallJson",
+            CALL_JSON,
             Func::from(Async(move |path: String, input_json: String| {
                 let handler = handler.clone();
                 async move { handler.call(path, input_json).await }

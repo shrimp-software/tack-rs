@@ -1,8 +1,7 @@
 use crate::ident::is_js_identifier;
-use crate::tools::ToolPolicy;
+use crate::tools::{ManifestImportError, ToolPolicy};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashMap;
 use thiserror::Error;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -44,6 +43,12 @@ const BUILTIN_TOOL_PATHS: &[&str] = &["tools.search", "tools.describe.tool", "to
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolRegistry {
+    /// Ordered tool descriptors exposed to snippets.
+    ///
+    /// The registry intentionally keeps descriptors in a plain vector because
+    /// hosts commonly serialize, filter, and display the complete list. Call
+    /// [`ToolRegistry::validate`] after direct mutation to enforce path
+    /// invariants before execution.
     pub tools: Vec<ToolDescriptor>,
 }
 
@@ -86,41 +91,7 @@ impl ToolRegistry {
     }
 
     pub fn from_manifest_value(value: &Value) -> Result<Self, ManifestImportError> {
-        let manifest: TackManifestImport = serde_json::from_value(value.clone())?;
-        let mut tools = Vec::with_capacity(manifest.tools.len());
-        for (fallback_id, tool) in manifest.tools {
-            let id = tool.id.unwrap_or(fallback_id);
-            let namespace = tool.namespace_name.unwrap_or_else(|| {
-                id.split('.')
-                    .next()
-                    .filter(|part| !part.is_empty())
-                    .unwrap_or("tool")
-                    .to_string()
-            });
-            let name = tool.sdk_name.unwrap_or_else(|| {
-                id.rsplit('.')
-                    .next()
-                    .filter(|part| !part.is_empty())
-                    .unwrap_or(id.as_str())
-                    .to_string()
-            });
-            tools.push(ToolDescriptor {
-                path: format!("{namespace}.{name}"),
-                tool_id: Some(id),
-                name,
-                title: None,
-                description: tool.description,
-                input_schema: tool
-                    .input_schema
-                    .unwrap_or_else(|| json!({"type":"object","additionalProperties":true})),
-                output_schema: tool.output_schema.unwrap_or(Value::Null),
-                tags: vec![namespace],
-            });
-        }
-        tools.sort_by(|left, right| left.path.cmp(&right.path));
-        let registry = Self { tools };
-        registry.validate()?;
-        Ok(registry)
+        super::manifest::registry_from_manifest_value(value)
     }
 }
 
@@ -155,30 +126,4 @@ fn validate_tool_path(path: &str) -> Result<(), RegistryValidationError> {
         }
     }
     Ok(())
-}
-
-#[derive(Debug, Error)]
-pub enum ManifestImportError {
-    #[error("invalid Tack manifest: {0}")]
-    Json(#[from] serde_json::Error),
-    #[error("invalid Tack registry: {0}")]
-    Registry(#[from] RegistryValidationError),
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct TackManifestImport {
-    #[serde(default)]
-    tools: HashMap<String, TackToolImport>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct TackToolImport {
-    id: Option<String>,
-    namespace_name: Option<String>,
-    sdk_name: Option<String>,
-    description: Option<String>,
-    input_schema: Option<Value>,
-    output_schema: Option<Value>,
 }

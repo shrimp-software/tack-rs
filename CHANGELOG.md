@@ -6,6 +6,7 @@
 - Added crate publishing metadata and repository license files.
 - Aligned the packaged example with the README host-tool example.
 - Added `ExecutionResult` constructors and clearer documentation for utility runtime/invoker types.
+- Centralized QuickJS host binding names and split behavior-focused unit tests.
 
 ## 1.0.4
 

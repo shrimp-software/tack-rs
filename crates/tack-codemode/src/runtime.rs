@@ -137,14 +137,6 @@ impl RuntimeFailure {
         self.logs = logs;
         self
     }
-
-    pub fn from_output(
-        phase: FailurePhase,
-        message: impl Into<String>,
-        output: &RuntimeOutput,
-    ) -> Self {
-        Self::new(phase, message).with_output(output.emitted.clone(), output.logs.clone())
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
