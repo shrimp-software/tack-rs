@@ -1,35 +1,16 @@
 # tack-rs
 
-Rust crates for tool-backed TypeScript execution. A host application exposes a
-registry of named tools, then `tack-rs` runs short TypeScript snippets that can
-discover those tools, call them, emit structured values, and return JSON.
+Tool-backed TypeScript execution for Rust applications.
 
-This workspace contains:
+`tack-rs` lets a host expose named tools, then run short TypeScript snippets
+that can discover those tools, call them, emit structured events, log progress,
+and return JSON. It is useful when one programmatic tool call is too small, but
+embedding a full scripting environment with broad ambient access is too much.
 
-- `tack-codemode`: host-independent contracts, tool registry types, built-in discovery helpers, policy hooks, and the execution engine.
+## Crates
+
+- `tack-codemode`: host-independent contracts, registries, policies, discovery helpers, and the execution engine.
 - `tack-runtime-quickjs`: a QuickJS + Oxc runtime for executing TypeScript snippets.
-
-The repository is ready for private/internal v1 usage. Publishing to crates.io
-still requires an explicit release decision.
-
-## When To Use It
-
-Use `tack-rs` when you want a Rust host application to expose a constrained set
-of tools to short-lived TypeScript snippets:
-
-- CLI automation that needs richer control flow than shell one-liners
-- MCP-style tool discovery and invocation
-- host-controlled browser, API, database, or local workflow automation
-- internal agents where the host owns the tool registry and policy layer
-
-Instead of asking an agent to issue one tool call at a time, `tack-rs` lets the
-agent write a small program that searches available tools, calls them in loops
-or batches, combines their responses, and returns one structured result.
-
-Do not treat `tack-runtime-quickjs` as the only security boundary for hostile
-public multi-tenant code. It removes ambient browser/Node capabilities and
-enforces runtime limits, but production systems should still run it behind normal
-process, container, identity, logging, and abuse controls.
 
 ## Install
 
@@ -39,102 +20,137 @@ tack-codemode = "1.0.4"
 tack-runtime-quickjs = "1.0.4"
 ```
 
-For local development before crates.io publishing:
-
-```toml
-[dependencies]
-tack-codemode = { path = "../tack-rs/crates/tack-codemode" }
-tack-runtime-quickjs = { path = "../tack-rs/crates/tack-runtime-quickjs" }
-```
-
 ## Example
 
 ```rust
-use serde_json::json;
-use std::{collections::HashMap, sync::Arc};
-use tack_codemode::{ExecutionEngine, MemoryInvoker, ToolDescriptor, ToolRegistry};
+use async_trait::async_trait;
+use serde_json::{Value, json};
+use std::sync::Arc;
+use tack_codemode::{
+    ExecutionEngine, ToolCall, ToolCallOutput, ToolDescriptor, ToolInvoker, ToolRegistry,
+};
 use tack_runtime_quickjs::QuickJsRuntime;
+
+struct HostTools;
+
+#[async_trait]
+impl ToolInvoker for HostTools {
+    async fn call(&self, call: ToolCall) -> ToolCallOutput {
+        match call.path.as_str() {
+            "inventory.lookup" => {
+                let sku = call.input.get("sku").and_then(Value::as_str).unwrap_or("");
+                ToolCallOutput::data(json!({ "sku": sku, "inStock": true }))
+            }
+            _ => ToolCallOutput::failure(format!("Unknown tool: {}", call.path)),
+        }
+    }
+}
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let registry = ToolRegistry {
-        tools: vec![ToolDescriptor::new("example.echo", "echo")],
+        tools: vec![ToolDescriptor::new("inventory.lookup", "lookup")],
     };
+    let engine = ExecutionEngine::new(registry, QuickJsRuntime, Arc::new(HostTools));
 
-    let invoker = MemoryInvoker::new(HashMap::from([(
-        "example.echo".to_string(),
-        json!({"message":"hello"}),
-    )]));
-
-    let engine = ExecutionEngine::new(registry, QuickJsRuntime, Arc::new(invoker));
-    let result = engine
-        .execute("return (await tools.example.echo({})).data.message;")
+    let output = engine
+        .execute(
+            r#"
+            const item = await tools.inventory.lookup({ sku: "abc-123" });
+            emit({ checked: item.data.sku });
+            return item.data.inStock;
+            "#,
+        )
         .await;
 
-    assert_eq!(result.result, Some(json!("hello")));
+    assert!(output.ok);
+    assert_eq!(output.result, Some(json!(true)));
+    assert_eq!(output.emitted, vec![json!({ "checked": "abc-123" })]);
 }
 ```
 
-## Execution Contract
+## Execution Model
 
-The runtime executes a TypeScript function body in a fresh QuickJS context. The
-host provides a `ToolRegistry` and a `ToolInvoker`; the snippet gets:
+Each execution runs a TypeScript function body in a fresh QuickJS context. Oxc
+strips TypeScript syntax before evaluation. The snippet receives a small global
+API:
 
 - `tools.search({ query, limit })`
 - `tools.describe.tool({ path })`
-- lazy tool calls such as `tools.example.echo(input)`
-- explicit path calls such as `tools.invoke("example.echo", input)`
-- host aliases such as `eoka.*` when configured
+- lazy calls such as `tools.inventory.lookup(input)`
+- explicit calls such as `tools.invoke("inventory.lookup", input)`
+- configured aliases such as `inventory.lookup(input)`
 - `emit(value)`
-- `console.log(value)`
+- `console.log(...values)`
 
-`tools.*` calls return standard tool envelopes:
+Tool calls through `tools.*` return envelopes:
 
 ```json
 { "ok": true, "data": { "value": 1 } }
 ```
 
-Aliases unwrap successful data and throw failed tool calls.
+Configured aliases unwrap successful tool results and throw on failed tool
+calls. This makes aliases convenient for concise scripts while preserving
+envelopes for lower-level `tools.*` calls.
 
-Tool paths must be valid dotted JavaScript identifiers such as `eoka.eval` or
-`browser.tabs.list`. Built-in paths under `tools.*` are reserved and cannot be
-registered by a host manifest.
+Tool paths must be valid dotted JavaScript identifiers, such as
+`inventory.lookup` or `browser.tabs.list`. Built-in paths under `tools.*` are
+reserved and cannot be registered by host manifests.
 
-Return values, `emit` values, `console.log` object values, and tool-call inputs are serialized with JavaScript `JSON.stringify` semantics. Unsupported top-level return values such as `undefined` become `null`; `BigInt` and cyclic return values fail the execution with a runtime error. Cyclic or otherwise non-serializable tool inputs return a normal failed tool envelope instead of calling the host tool. Use `tools.invoke(path, input)` for tool paths that contain JavaScript proxy edge-case segments such as `then`.
+## Serialization
+
+Returned values, emitted values, logged object values, and tool inputs use
+JavaScript `JSON.stringify` semantics.
+
+- top-level `undefined` returns `null`
+- `BigInt` and cyclic return values fail execution with a runtime error
+- cyclic or non-serializable tool inputs return a failed tool envelope without calling the host
+- use `tools.invoke(path, input)` for paths with JavaScript proxy edge-case segments such as `then`
 
 ## Limits
 
-Defaults:
+Default runtime limits:
 
-- timeout: 30 seconds
+- execution timeout: 30 seconds
 - memory: 128 MiB
 - stack: 1,000,000 bytes
-- output/request/response payload: 1,000,000 bytes
+- output payload: 1,000,000 bytes
+- tool request payload: 1,000,000 bytes
+- tool response payload: 1,000,000 bytes
 - tool calls: 100
 - per-tool-call timeout: 30 seconds
 
-All configured limits must be greater than zero. Ambient `fetch`, `process`, `require`, filesystem, and module access are not provided by the runtime. Tool calls are limited to paths declared in the registry after policy filtering, including direct `QuickJsRuntime` use. Logs and emitted values are counted against the output byte limit while code is running, then the exact serialized response is checked again before returning.
+All configured limits must be greater than zero.
 
-Tool request size is checked in JavaScript immediately after `JSON.stringify(input)`, then checked again in Rust by encoded byte length before the host invoker is called. The JavaScript-side check avoids host calls for oversized requests but does not remove the temporary allocation required to serialize arbitrary JS values; the QuickJS memory limit bounds that allocation.
+The QuickJS runtime does not install ambient `fetch`, `process`, `require`,
+filesystem, or module-loader access. Tool calls are limited to paths declared in
+the registry after policy filtering, including direct `QuickJsRuntime` use. Logs
+and emitted values count against the output byte limit while code is running,
+then the exact serialized response is checked again before returning.
 
-Tool-call timeouts cancel the awaited Rust future. Host invokers should be cancellation-safe and avoid detached blocking work if they need hard cleanup guarantees.
+Tool request size is checked in JavaScript immediately after
+`JSON.stringify(input)`, then checked again in Rust by encoded byte length before
+the host invoker is called. The JavaScript-side check avoids host calls for
+oversized requests but does not remove the temporary allocation required to
+serialize arbitrary JavaScript values; the QuickJS memory limit bounds that
+allocation.
 
-## Security Model
+Tool-call timeouts cancel the awaited Rust future. Host invokers should be
+cancellation-safe and avoid detached blocking work if they need hard cleanup
+guarantees.
 
-The runtime is designed to reduce ambient authority:
+## Security
 
-- no `fetch`, `process`, `require`, filesystem, or module loader is installed
+`tack-rs` is designed to reduce ambient authority:
+
 - each execution uses a fresh QuickJS context
-- tool calls must resolve to declared registry paths
-- policies can filter tools before discovery and invocation
+- no browser, Node, filesystem, or module globals are installed
+- tool paths must be declared and can be filtered by policy
 - CPU, memory, stack, output, request, response, and tool-call limits are enforced
 
-The host is still responsible for:
-
-- deciding which tools are exposed
-- validating tool input at the tool boundary
-- enforcing authorization and audit logging
-- isolating execution at the process/container level when snippets are untrusted
+The host application is still responsible for authorization, audit logging,
+input validation at tool boundaries, and process or container isolation when
+running untrusted snippets.
 
 ## Verification
 
@@ -146,12 +162,13 @@ cargo doc --workspace --no-deps
 cargo package --workspace
 ```
 
-## Release Checklist
+## Publishing
 
-Before publishing:
+Publish `tack-codemode` first, then `tack-runtime-quickjs`.
+
+Before publishing a release:
 
 - run the verification commands above on Rust 1.94
 - verify parity against the v1 contract fixture
 - confirm semver version bumps in both crates
-- publish `tack-codemode` first, then `tack-runtime-quickjs`
-- do not publish from this local checkout without explicit authorization
+- inspect packaged contents with `cargo package --workspace --list`
