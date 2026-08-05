@@ -1,13 +1,46 @@
 # tack-rs
 
-Rust crates for Tack Code Mode.
+Rust crates for Tack Code Mode: a small execution layer for running TypeScript
+snippets against a host-provided tool registry.
 
 This workspace contains:
 
 - `tack-codemode`: host-independent Code Mode contracts, tool registry types, built-in discovery helpers, policy hooks, and the execution engine.
 - `tack-runtime-quickjs`: a QuickJS + Oxc runtime for executing TypeScript Code Mode snippets.
 
-The repository is prepared for internal release validation, but publishing still requires an explicit release decision.
+The repository is ready for private/internal v1 usage. Publishing to crates.io
+still requires an explicit release decision.
+
+## When To Use It
+
+Use `tack-rs` when you want a Rust host application to expose a constrained set
+of tools to short-lived TypeScript snippets:
+
+- CLI automation that needs richer control flow than shell one-liners
+- MCP-style tool discovery and invocation
+- host-controlled browser, API, database, or local workflow automation
+- internal agents where the host owns the tool registry and policy layer
+
+Do not treat `tack-runtime-quickjs` as the only security boundary for hostile
+public multi-tenant code. It removes ambient browser/Node capabilities and
+enforces runtime limits, but production systems should still run it behind normal
+process, container, identity, logging, and abuse controls.
+
+## Install
+
+```toml
+[dependencies]
+tack-codemode = "1.0.4"
+tack-runtime-quickjs = "1.0.4"
+```
+
+For local development before crates.io publishing:
+
+```toml
+[dependencies]
+tack-codemode = { path = "../tack-rs/crates/tack-codemode" }
+tack-runtime-quickjs = { path = "../tack-rs/crates/tack-runtime-quickjs" }
+```
 
 ## Example
 
@@ -39,7 +72,8 @@ async fn main() {
 
 ## Contract
 
-Code Mode executes a TypeScript function body in a fresh QuickJS context. The runtime exposes:
+Code Mode executes a TypeScript function body in a fresh QuickJS context. The
+host provides a `ToolRegistry` and a `ToolInvoker`; the runtime exposes:
 
 - `tools.search({ query, limit })`
 - `tools.describe.tool({ path })`
@@ -56,6 +90,10 @@ Code Mode executes a TypeScript function body in a fresh QuickJS context. The ru
 ```
 
 Aliases unwrap successful data and throw failed tool calls.
+
+Tool paths must be valid dotted JavaScript identifiers such as `eoka.eval` or
+`browser.tabs.list`. Built-in paths under `tools.*` are reserved and cannot be
+registered by a host manifest.
 
 Return values, `emit` values, `console.log` object values, and tool-call inputs are serialized with JavaScript `JSON.stringify` semantics. Unsupported top-level return values such as `undefined` become `null`; `BigInt` and cyclic return values fail the execution with a runtime error. Cyclic or otherwise non-serializable tool inputs return a normal failed Tack envelope instead of calling the host tool. Use `tools.invoke(path, input)` for tool paths that contain JavaScript proxy edge-case segments such as `then`.
 
@@ -75,6 +113,23 @@ All configured limits must be greater than zero. Ambient `fetch`, `process`, `re
 Tool request size is checked in JavaScript immediately after `JSON.stringify(input)`, then checked again in Rust by encoded byte length before the host invoker is called. The JavaScript-side check avoids host calls for oversized requests but does not remove the temporary allocation required to serialize arbitrary JS values; the QuickJS memory limit bounds that allocation.
 
 Tool-call timeouts cancel the awaited Rust future. Host invokers should be cancellation-safe and avoid detached blocking work if they need hard cleanup guarantees.
+
+## Security Model
+
+The runtime is designed to reduce ambient authority:
+
+- no `fetch`, `process`, `require`, filesystem, or module loader is installed
+- each execution uses a fresh QuickJS context
+- tool calls must resolve to declared registry paths
+- policies can filter tools before discovery and invocation
+- CPU, memory, stack, output, request, response, and tool-call limits are enforced
+
+The host is still responsible for:
+
+- deciding which tools are exposed
+- validating tool input at the tool boundary
+- enforcing authorization and audit logging
+- isolating execution at the process/container level when snippets are untrusted
 
 ## Verification
 
