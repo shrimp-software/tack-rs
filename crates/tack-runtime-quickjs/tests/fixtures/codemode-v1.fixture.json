@@ -1,0 +1,19 @@
+{
+  "version": "1",
+  "defaults": {
+    "timeoutMs": 30000,
+    "memoryMb": 128,
+    "maxStackBytes": 1000000,
+    "maxOutputBytes": 1000000,
+    "maxToolCalls": 100,
+    "toolCallTimeoutMs": 30000,
+    "maxToolRequestBytes": 1000000,
+    "maxToolResponseBytes": 1000000
+  },
+  "errorPhases": ["parse", "runtime", "timeout"],
+  "builtins": ["search", "describe.tool", "invoke"],
+  "toolResult": {
+    "success": { "ok": true, "data": { "value": 3 }, "text": "{\"value\":3}" },
+    "failure": { "ok": false, "text": "denied", "error": { "message": "denied" } }
+  }
+}

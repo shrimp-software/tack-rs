@@ -1,0 +1,25 @@
+[package]
+name = "tack-runtime-quickjs"
+version.workspace = true
+description = "QuickJS and Oxc runtime for executing Tack Code Mode TypeScript snippets."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+oxc_allocator = "=0.120.0"
+oxc-browserslist = "=3.0.9"
+oxc_codegen = "=0.120.0"
+oxc_data_structures = "=0.120.0"
+oxc_parser = "=0.120.0"
+oxc_semantic = "=0.120.0"
+oxc_span = "=0.120.0"
+oxc_transformer = "=0.120.0"
+rquickjs = { version = "=0.12.2", features = ["futures"] }
+serde.workspace = true
+serde_json.workspace = true
+tack-codemode.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
