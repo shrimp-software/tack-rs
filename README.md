@@ -22,10 +22,9 @@ of tools to short-lived TypeScript snippets:
 - host-controlled browser, API, database, or local workflow automation
 - internal agents where the host owns the tool registry and policy layer
 
-In practice, this is the Rust runtime/library layer behind Tack's "Code Mode":
-instead of asking an agent to issue one tool call at a time, the agent can write
-a small program that searches available tools, calls them in loops or batches,
-combines their responses, and returns one structured result.
+Instead of asking an agent to issue one tool call at a time, `tack-rs` lets the
+agent write a small program that searches available tools, calls them in loops
+or batches, combines their responses, and returns one structured result.
 
 Do not treat `tack-runtime-quickjs` as the only security boundary for hostile
 public multi-tenant code. It removes ambient browser/Node capabilities and
@@ -89,7 +88,7 @@ host provides a `ToolRegistry` and a `ToolInvoker`; the snippet gets:
 - `emit(value)`
 - `console.log(value)`
 
-`tools.*` calls return Tack envelopes:
+`tools.*` calls return standard tool envelopes:
 
 ```json
 { "ok": true, "data": { "value": 1 } }
@@ -101,7 +100,7 @@ Tool paths must be valid dotted JavaScript identifiers such as `eoka.eval` or
 `browser.tabs.list`. Built-in paths under `tools.*` are reserved and cannot be
 registered by a host manifest.
 
-Return values, `emit` values, `console.log` object values, and tool-call inputs are serialized with JavaScript `JSON.stringify` semantics. Unsupported top-level return values such as `undefined` become `null`; `BigInt` and cyclic return values fail the execution with a runtime error. Cyclic or otherwise non-serializable tool inputs return a normal failed Tack envelope instead of calling the host tool. Use `tools.invoke(path, input)` for tool paths that contain JavaScript proxy edge-case segments such as `then`.
+Return values, `emit` values, `console.log` object values, and tool-call inputs are serialized with JavaScript `JSON.stringify` semantics. Unsupported top-level return values such as `undefined` become `null`; `BigInt` and cyclic return values fail the execution with a runtime error. Cyclic or otherwise non-serializable tool inputs return a normal failed tool envelope instead of calling the host tool. Use `tools.invoke(path, input)` for tool paths that contain JavaScript proxy edge-case segments such as `then`.
 
 ## Limits
 
@@ -152,7 +151,7 @@ cargo package --workspace
 Before publishing:
 
 - run the verification commands above on Rust 1.94
-- verify parity against the Tack tool-execution v1 fixture
+- verify parity against the v1 contract fixture
 - confirm semver version bumps in both crates
 - publish `tack-codemode` first, then `tack-runtime-quickjs`
 - do not publish from this local checkout without explicit authorization

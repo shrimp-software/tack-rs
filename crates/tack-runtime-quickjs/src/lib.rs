@@ -1,8 +1,8 @@
-//! QuickJS runtime for tool-backed Tack TypeScript snippets.
+//! QuickJS runtime for tool-backed TypeScript snippets.
 //!
 //! This crate executes TypeScript snippets against the host-independent
 //! contracts from `tack-codemode`. It uses Oxc to strip TypeScript syntax,
-//! evaluates code in an isolated QuickJS context, exposes Tack tool calls,
+//! evaluates code in an isolated QuickJS context, exposes host tool calls,
 //! `emit`, and `console.log`, and enforces runtime and payload limits.
 
 use async_trait::async_trait;

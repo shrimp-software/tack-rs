@@ -1,7 +1,7 @@
 [package]
 name = "tack-runtime-quickjs"
 version.workspace = true
-description = "QuickJS and Oxc runtime for executing tool-backed Tack TypeScript snippets."
+description = "QuickJS and Oxc runtime for executing tool-backed TypeScript snippets."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
