@@ -7,6 +7,8 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 readme = "../../README.md"
+keywords = ["typescript", "quickjs", "scripting", "automation", "runtime"]
+categories = ["development-tools"]
 
 [dependencies]
 async-trait.workspace = true

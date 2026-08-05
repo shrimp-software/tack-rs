@@ -1,5 +1,5 @@
 use super::*;
-use crate::tools::builtins::schema_to_type;
+use crate::tools::schema::schema_to_type;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;

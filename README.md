@@ -16,8 +16,8 @@ embedding a full scripting environment with broad ambient access is too much.
 
 ```toml
 [dependencies]
-tack-codemode = "1.0.4"
-tack-runtime-quickjs = "1.0.4"
+tack-codemode = "1.0.5"
+tack-runtime-quickjs = "1.0.5"
 ```
 
 ## Example
@@ -171,4 +171,5 @@ Before publishing a release:
 - run the verification commands above on Rust 1.94
 - verify parity against the v1 contract fixture
 - confirm semver version bumps in both crates
+- update `CHANGELOG.md`
 - inspect packaged contents with `cargo package --workspace --list`

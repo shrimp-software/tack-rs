@@ -137,6 +137,14 @@ impl RuntimeFailure {
         self.logs = logs;
         self
     }
+
+    pub fn from_output(
+        phase: FailurePhase,
+        message: impl Into<String>,
+        output: &RuntimeOutput,
+    ) -> Self {
+        Self::new(phase, message).with_output(output.emitted.clone(), output.logs.clone())
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -169,6 +177,28 @@ pub struct ExecutionResult {
     pub logs: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<RuntimeFailure>,
+}
+
+impl ExecutionResult {
+    pub fn ok(output: RuntimeOutput) -> Self {
+        Self {
+            ok: true,
+            result: Some(output.result),
+            emitted: output.emitted,
+            logs: output.logs,
+            error: None,
+        }
+    }
+
+    pub fn failure(error: RuntimeFailure) -> Self {
+        Self {
+            ok: false,
+            result: None,
+            emitted: error.emitted.clone(),
+            logs: error.logs.clone(),
+            error: Some(error),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -214,37 +244,19 @@ where
     pub async fn execute(&self, source: impl Into<String>) -> ExecutionResult {
         let registry = self.execution_registry();
         if let Err(error) = validate_aliases(&self.aliases) {
-            return ExecutionResult {
-                ok: false,
-                result: None,
-                emitted: Vec::new(),
-                logs: Vec::new(),
-                error: Some(error),
-            };
+            return ExecutionResult::failure(error);
         }
         if let Err(error) = self.limits.validate() {
-            return ExecutionResult {
-                ok: false,
-                result: None,
-                emitted: Vec::new(),
-                logs: Vec::new(),
-                error: Some(RuntimeFailure::new(
-                    FailurePhase::Runtime,
-                    error.to_string(),
-                )),
-            };
+            return ExecutionResult::failure(RuntimeFailure::new(
+                FailurePhase::Runtime,
+                error.to_string(),
+            ));
         }
         if let Err(error) = registry.validate() {
-            return ExecutionResult {
-                ok: false,
-                result: None,
-                emitted: Vec::new(),
-                logs: Vec::new(),
-                error: Some(RuntimeFailure::new(
-                    FailurePhase::Runtime,
-                    error.to_string(),
-                )),
-            };
+            return ExecutionResult::failure(RuntimeFailure::new(
+                FailurePhase::Runtime,
+                error.to_string(),
+            ));
         }
 
         let input = RuntimeInput {
@@ -255,20 +267,8 @@ where
         };
 
         match self.runtime.execute(input, self.host_invoker()).await {
-            Ok(output) => ExecutionResult {
-                ok: true,
-                result: Some(output.result),
-                emitted: output.emitted,
-                logs: output.logs,
-                error: None,
-            },
-            Err(error) => ExecutionResult {
-                ok: false,
-                result: None,
-                emitted: error.emitted.clone(),
-                logs: error.logs.clone(),
-                error: Some(error),
-            },
+            Ok(output) => ExecutionResult::ok(output),
+            Err(error) => ExecutionResult::failure(error),
         }
     }
 
@@ -290,6 +290,10 @@ where
     }
 }
 
+/// Runtime implementation that always returns a fixed result.
+///
+/// This is useful for host-side tests that need to exercise [`ExecutionEngine`]
+/// policy, registry, and result wrapping without starting a JavaScript runtime.
 #[derive(Clone, Debug)]
 pub struct StaticRuntime {
     output: Result<RuntimeOutput, RuntimeFailure>,
