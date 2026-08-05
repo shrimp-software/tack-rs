@@ -20,8 +20,8 @@ embedding a full scripting environment with broad ambient access is too much.
 
 ```toml
 [dependencies]
-tack-core = "1.0.5"
-tack-runtime-quickjs = "1.0.5"
+tack-core = "0.0.1"
+tack-runtime-quickjs = "0.0.1"
 ```
 
 ## Example

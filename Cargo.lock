@@ -972,7 +972,7 @@ dependencies = [
 
 [[package]]
 name = "tack-core"
-version = "1.0.5"
+version = "0.0.1"
 dependencies = [
  "async-trait",
  "serde",
@@ -983,7 +983,7 @@ dependencies = [
 
 [[package]]
 name = "tack-runtime-quickjs"
-version = "1.0.5"
+version = "0.0.1"
 dependencies = [
  "async-trait",
  "oxc-browserslist",
