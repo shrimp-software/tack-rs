@@ -39,8 +39,8 @@ pub(crate) fn wrap_user_code(transformed: &str) -> String {
 fn alias_definition(namespace: &str, prefix: &str) -> String {
     format!(
         "__tackDefine(globalThis, {}, {{ value: __tackNamespace({}, true), writable: false, configurable: false }});\n",
-        serde_json::to_string(namespace).expect("namespace json"),
-        serde_json::to_string(prefix).expect("prefix json")
+        js_string(namespace),
+        js_string(prefix)
     )
 }
 
@@ -50,8 +50,12 @@ fn hide_host_bindings() -> String {
         .map(|name| {
             format!(
                 "__tackDefine(globalThis, {}, {{ value: undefined, writable: false, configurable: false }});\n",
-                serde_json::to_string(name).expect("host binding json")
+                js_string(name)
             )
         })
         .collect()
+}
+
+fn js_string(value: &str) -> String {
+    serde_json::to_string(value).expect("javascript string literal")
 }

@@ -1,5 +1,9 @@
 # tack-rs
 
+[![CI](https://github.com/shrimp-software/tack-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/shrimp-software/tack-rs/actions/workflows/ci.yml)
+[![docs.rs](https://docs.rs/tack-codemode/badge.svg)](https://docs.rs/tack-codemode)
+[![crates.io](https://img.shields.io/crates/v/tack-codemode.svg)](https://crates.io/crates/tack-codemode)
+
 Tool-backed TypeScript execution for Rust applications.
 
 `tack-rs` lets a host expose named tools, then run short TypeScript snippets
@@ -9,8 +13,8 @@ embedding a full scripting environment with broad ambient access is too much.
 
 ## Crates
 
-- `tack-codemode`: host-independent contracts, registries, policies, discovery helpers, and the execution engine.
-- `tack-runtime-quickjs`: a QuickJS + Oxc runtime for executing TypeScript snippets.
+- [`tack-codemode`](https://docs.rs/tack-codemode): host-independent contracts, registries, policies, discovery helpers, and the execution engine.
+- [`tack-runtime-quickjs`](https://docs.rs/tack-runtime-quickjs): a QuickJS + Oxc runtime for executing TypeScript snippets.
 
 ## Install
 
@@ -164,12 +168,4 @@ cargo package --workspace
 
 ## Publishing
 
-Publish `tack-codemode` first, then `tack-runtime-quickjs`.
-
-Before publishing a release:
-
-- run the verification commands above on Rust 1.94
-- verify parity against the v1 contract fixture
-- confirm semver version bumps in both crates
-- update `CHANGELOG.md`
-- inspect packaged contents with `cargo package --workspace --list`
+See [RELEASING.md](RELEASING.md).

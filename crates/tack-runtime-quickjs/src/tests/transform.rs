@@ -1,4 +1,4 @@
-use super::*;
+use crate::runtime::transform_typescript;
 
 #[test]
 fn transforms_typescript() {

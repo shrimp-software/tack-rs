@@ -1,5 +1,5 @@
 use crate::ident::is_js_identifier;
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::collections::HashSet;
 
 pub(crate) fn schema_to_type(schema: &Value) -> String {
@@ -81,16 +81,16 @@ fn union_type(types: impl IntoIterator<Item = String>) -> String {
 }
 
 fn object_schema_to_type(schema: &Value) -> String {
+    let empty = Map::new();
     let properties = schema
         .get("properties")
         .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
+        .unwrap_or(&empty);
     let additional = schema.get("additionalProperties");
     if properties.is_empty() {
         return match additional {
-            Some(Value::Object(_)) => {
-                format!("Record<string, {}>", schema_to_type(additional.unwrap()))
+            Some(schema @ Value::Object(_)) => {
+                format!("Record<string, {}>", schema_to_type(schema))
             }
             Some(Value::Bool(false)) => "{}".to_string(),
             _ => "Record<string, unknown>".to_string(),

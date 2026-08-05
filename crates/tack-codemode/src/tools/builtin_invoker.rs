@@ -3,6 +3,8 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
+use super::paths;
+
 pub struct BuiltinAwareInvoker {
     registry: ToolRegistry,
     inner: Arc<dyn ToolInvoker>,
@@ -18,9 +20,9 @@ impl BuiltinAwareInvoker {
 impl ToolInvoker for BuiltinAwareInvoker {
     async fn call(&self, call: ToolCall) -> ToolCallOutput {
         match call.path.as_str() {
-            "tools.search" => self.search(call.input),
-            "tools.describe.tool" => self.describe(call.input),
-            "tools.invoke" => self.invoke(call.input).await,
+            paths::SEARCH => self.search(call.input),
+            paths::DESCRIBE_TOOL => self.describe(call.input),
+            paths::INVOKE => self.invoke(call.input).await,
             _ => self.inner.call(call).await,
         }
     }
@@ -55,7 +57,7 @@ impl BuiltinAwareInvoker {
         let Some(path) = input.get("path").and_then(Value::as_str) else {
             return ToolCallOutput::failure("tool path is required");
         };
-        if path.is_empty() || path == "tools.invoke" {
+        if path.is_empty() || path == paths::INVOKE {
             return ToolCallOutput::failure("tool path is required");
         }
         let input = input.get("input").cloned().unwrap_or_else(|| json!({}));

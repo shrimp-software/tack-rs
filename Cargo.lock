@@ -990,6 +990,7 @@ dependencies = [
  "oxc_allocator",
  "oxc_codegen",
  "oxc_data_structures",
+ "oxc_diagnostics",
  "oxc_parser",
  "oxc_semantic",
  "oxc_span",

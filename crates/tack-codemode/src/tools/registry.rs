@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use thiserror::Error;
 
+use super::paths::BUILTIN_TOOL_PATHS;
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolDescriptor {
@@ -38,8 +40,6 @@ impl ToolDescriptor {
     }
 }
 
-const BUILTIN_TOOL_PATHS: &[&str] = &["tools.search", "tools.describe.tool", "tools.invoke"];
-
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolRegistry {
@@ -53,6 +53,29 @@ pub struct ToolRegistry {
 }
 
 impl ToolRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn from_tools(tools: Vec<ToolDescriptor>) -> Result<Self, RegistryValidationError> {
+        let registry = Self { tools };
+        registry.validate()?;
+        Ok(registry)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &ToolDescriptor> {
+        self.tools.iter()
+    }
+
+    pub fn push(&mut self, tool: ToolDescriptor) -> Result<(), RegistryValidationError> {
+        validate_tool_path(&tool.path)?;
+        if self.contains_path(&tool.path) {
+            return Err(RegistryValidationError::DuplicateToolPath(tool.path));
+        }
+        self.tools.push(tool);
+        Ok(())
+    }
+
     pub fn validate(&self) -> Result<(), RegistryValidationError> {
         let mut paths = self
             .tools

@@ -3,6 +3,7 @@ mod discovery;
 mod invocation;
 mod manifest;
 mod memory;
+mod paths;
 mod policy;
 mod registry;
 mod registry_invoker;
