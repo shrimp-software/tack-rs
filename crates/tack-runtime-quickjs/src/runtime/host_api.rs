@@ -5,7 +5,7 @@ use rquickjs::{
 };
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
-use tack_codemode::{RuntimeFailure, RuntimeInput, ToolCall, ToolCallOutput, ToolInvoker};
+use tack_core::{RuntimeFailure, RuntimeInput, ToolCall, ToolCallOutput, ToolInvoker};
 use tokio::time;
 
 use super::CapturedOutput;

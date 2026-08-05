@@ -3,11 +3,12 @@
 ## 1.0.5
 
 - Split large implementation modules into focused runtime, tool, schema, policy, and test modules.
-- Added crate publishing metadata and repository license files.
+- Added crate publishing metadata and an MIT license file.
 - Aligned the packaged example with the README host-tool example.
 - Added `ExecutionResult` constructors and clearer documentation for utility runtime/invoker types.
 - Centralized QuickJS host binding names and split behavior-focused unit tests.
 - Split runtime internals further, added registry constructors, and moved release steps into `RELEASING.md`.
+- Named the host-independent contract crate `tack-core`.
 
 ## 1.0.4
 

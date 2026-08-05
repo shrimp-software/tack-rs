@@ -1,8 +1,8 @@
 # tack-rs
 
 [![CI](https://github.com/shrimp-software/tack-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/shrimp-software/tack-rs/actions/workflows/ci.yml)
-[![docs.rs](https://docs.rs/tack-codemode/badge.svg)](https://docs.rs/tack-codemode)
-[![crates.io](https://img.shields.io/crates/v/tack-codemode.svg)](https://crates.io/crates/tack-codemode)
+[![docs.rs](https://docs.rs/tack-core/badge.svg)](https://docs.rs/tack-core)
+[![crates.io](https://img.shields.io/crates/v/tack-core.svg)](https://crates.io/crates/tack-core)
 
 Tool-backed TypeScript execution for Rust applications.
 
@@ -13,14 +13,14 @@ embedding a full scripting environment with broad ambient access is too much.
 
 ## Crates
 
-- [`tack-codemode`](https://docs.rs/tack-codemode): host-independent contracts, registries, policies, discovery helpers, and the execution engine.
+- [`tack-core`](https://docs.rs/tack-core): host-independent contracts, registries, policies, discovery helpers, and the execution engine.
 - [`tack-runtime-quickjs`](https://docs.rs/tack-runtime-quickjs): a QuickJS + Oxc runtime for executing TypeScript snippets.
 
 ## Install
 
 ```toml
 [dependencies]
-tack-codemode = "1.0.5"
+tack-core = "1.0.5"
 tack-runtime-quickjs = "1.0.5"
 ```
 
@@ -30,7 +30,7 @@ tack-runtime-quickjs = "1.0.5"
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::sync::Arc;
-use tack_codemode::{
+use tack_core::{
     ExecutionEngine, ToolCall, ToolCallOutput, ToolDescriptor, ToolInvoker, ToolRegistry,
 };
 use tack_runtime_quickjs::QuickJsRuntime;

@@ -971,7 +971,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tack-codemode"
+name = "tack-core"
 version = "1.0.5"
 dependencies = [
  "async-trait",
@@ -998,7 +998,7 @@ dependencies = [
  "rquickjs",
  "serde",
  "serde_json",
- "tack-codemode",
+ "tack-core",
  "thiserror",
  "tokio",
 ]

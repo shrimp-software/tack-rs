@@ -1,5 +1,5 @@
 [package]
-name = "tack-codemode"
+name = "tack-core"
 version.workspace = true
 description = "Host-independent contracts, tool registry, policies, and execution engine for tool-backed TypeScript snippets."
 edition.workspace = true

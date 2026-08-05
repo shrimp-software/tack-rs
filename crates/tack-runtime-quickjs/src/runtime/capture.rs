@@ -2,7 +2,7 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
-use tack_codemode::{FailurePhase, RuntimeFailure, RuntimeOutput};
+use tack_core::{FailurePhase, RuntimeFailure, RuntimeOutput};
 
 use serde_json::Value;
 

@@ -1,4 +1,4 @@
-use tack_codemode::{FailurePhase, RuntimeFailure, RuntimeLimitsError, RuntimeOutput};
+use tack_core::{FailurePhase, RuntimeFailure, RuntimeLimitsError, RuntimeOutput};
 
 pub(crate) fn runtime_limits_error(error: RuntimeLimitsError) -> RuntimeFailure {
     RuntimeFailure::new(FailurePhase::Runtime, error.to_string())

@@ -1,6 +1,6 @@
 # Releasing
 
-Publish `tack-codemode` first, then `tack-runtime-quickjs`.
+Publish `tack-core` first, then `tack-runtime-quickjs`.
 
 Before publishing:
 
@@ -11,16 +11,16 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo doc --workspace --no-deps
 cargo package --workspace --list
-cargo publish --dry-run -p tack-codemode
+cargo publish --dry-run -p tack-core
 ```
 
 Publish the contract crate first:
 
 ```bash
-cargo publish -p tack-codemode
+cargo publish -p tack-core
 ```
 
-After `tack-codemode` is available on crates.io:
+After `tack-core` is available on crates.io:
 
 ```bash
 cargo publish --dry-run -p tack-runtime-quickjs

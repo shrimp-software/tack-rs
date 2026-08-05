@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tack_codemode::{
+use tack_core::{
     CodeRuntime, DenyListPolicy, ExecutionEngine, FailurePhase, MemoryInvoker, RuntimeInput,
     RuntimeLimits, ToolCall, ToolCallOutput, ToolDescriptor, ToolInvoker, ToolRegistry,
 };

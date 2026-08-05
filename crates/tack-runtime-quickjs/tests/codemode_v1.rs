@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 use std::{collections::HashMap, sync::Arc};
-use tack_codemode::{
+use tack_core::{
     ExecutionEngine, FailurePhase, MemoryInvoker, RuntimeLimits, ToolCallOutput, ToolDescriptor,
     ToolRegistry,
 };
@@ -77,7 +77,7 @@ fn tool_envelopes_match_contract_fixture() {
         data: None,
         text: Some("denied".to_string()),
         raw: None,
-        error: Some(tack_codemode::ToolCallError {
+        error: Some(tack_core::ToolCallError {
             message: "denied".to_string(),
             code: None,
             details: None,

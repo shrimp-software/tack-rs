@@ -5,7 +5,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use std::time::Instant;
-use tack_codemode::{
+use tack_core::{
     BuiltinAwareInvoker, FailurePhase, RegistryAwareInvoker, RuntimeFailure, RuntimeInput,
     RuntimeOutput, ToolInvoker, validate_aliases,
 };
@@ -60,7 +60,7 @@ fn validate_input(input: &RuntimeInput) -> Result<(), RuntimeFailure> {
 }
 
 fn runtime_invoker(
-    registry: tack_codemode::ToolRegistry,
+    registry: tack_core::ToolRegistry,
     invoker: Arc<dyn ToolInvoker>,
 ) -> Arc<dyn ToolInvoker> {
     Arc::new(BuiltinAwareInvoker::new(

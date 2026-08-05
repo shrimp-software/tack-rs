@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::sync::Arc;
-use tack_codemode::{
+use tack_core::{
     ExecutionEngine, ToolCall, ToolCallOutput, ToolDescriptor, ToolInvoker, ToolRegistry,
 };
 use tack_runtime_quickjs::QuickJsRuntime;

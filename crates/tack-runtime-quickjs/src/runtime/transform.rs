@@ -7,7 +7,7 @@ use oxc_semantic::SemanticBuilder;
 use oxc_span::SourceType;
 use oxc_transformer::{HelperLoaderMode, TransformOptions, Transformer};
 use std::path::Path;
-use tack_codemode::{FailurePhase, RuntimeFailure};
+use tack_core::{FailurePhase, RuntimeFailure};
 
 const TRANSFORM_PATH: &str = "codemode.ts";
 
