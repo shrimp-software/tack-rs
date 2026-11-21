@@ -1,7 +1,11 @@
 # TypeScript API
 
 Each snippet is evaluated as a TypeScript function body in a fresh QuickJS
-context. The runtime strips TypeScript syntax before evaluation.
+context. The runtime erases TypeScript types before evaluation, replacing them
+with whitespace so line and column numbers stay intact. Syntax that would need
+generated code (enums, namespaces with values, parameter properties,
+decorators, `import x = require(...)`) and `import`/`export` of values fail
+in the `parse` phase.
 
 ## Globals
 
