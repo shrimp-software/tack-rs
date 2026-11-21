@@ -18,6 +18,48 @@ async fn executes_typescript_and_tools() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn runs_stripped_typescript() {
+    let engine = ExecutionEngine::new(
+        registry(Vec::new()),
+        QuickJsRuntime,
+        Arc::new(MemoryInvoker::default()),
+    );
+    let result = engine
+        .execute(
+            "interface Shape { area(): number }
+             abstract class Base<T> implements Shape {
+               protected readonly scale: number = 2;
+               declare tag: string;
+               abstract area(): number;
+             }
+             class Square extends Base<number> {
+               constructor(private_side?: number) { super(); this.side = private_side!; }
+               side!: number;
+               override area(): number { return (this.side as number) ** 2 * this.scale; }
+             }
+             const pick = <T,>(items: T[], index?: number): T => items[index ?? 0]!;
+             return pick<Shape>([new Square(3) satisfies Shape]).area();",
+        )
+        .await;
+    assert!(result.ok, "{:?}", result.error);
+    assert_eq!(result.result, Some(json!(18)));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn early_errors_surface_from_quickjs() {
+    let engine = ExecutionEngine::new(
+        registry(Vec::new()),
+        QuickJsRuntime,
+        Arc::new(MemoryInvoker::default()),
+    );
+    let result = engine.execute("let a = 1; let a = 2; return a;").await;
+    assert!(!result.ok);
+    let error = result.error.unwrap();
+    assert_eq!(error.phase, FailurePhase::Runtime, "{error:?}");
+    assert!(error.message.contains("redefinition"), "{error:?}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn aliases_return_data_directly() {
     let registry = registry(vec![ToolDescriptor::new("eoka.info", "info")]);
     let mut outputs = HashMap::new();
