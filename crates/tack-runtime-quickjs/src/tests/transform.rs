@@ -65,6 +65,30 @@ fn strips_expression_syntax() {
 }
 
 #[test]
+fn keeps_statements_apart_after_trailing_assertions() {
+    assert_eq!(
+        body("const a = b as Foo\n(c).d()\nconst e = f satisfies G\n[1].map(h)"),
+        "const a = b;      \n(c).d()\nconst e = f;           \n[1].map(h)"
+    );
+}
+
+#[test]
+fn strips_assignment_targets() {
+    assert_eq!(
+        body("(x as any) = 1; x! = 2; x!++; for ((y as any) of z) {}"),
+        "(x       ) = 1; x  = 2; x ++; for ((y       ) of z) {}"
+    );
+}
+
+#[test]
+fn keeps_modifier_words_in_class_heritage() {
+    assert_eq!(
+        body("const C = class extends mixin(\"readonly\", override) {}"),
+        "const C = class extends mixin(\"readonly\", override) {}"
+    );
+}
+
+#[test]
 fn erases_type_only_statements_without_joining_lines() {
     assert_eq!(
         body("let x = 1\ntype A = string\ninterface I<T> { x: T }\n[1].forEach(f)"),

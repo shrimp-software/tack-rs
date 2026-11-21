@@ -66,10 +66,19 @@ impl Stripper<'_> {
         self.out[span.start as usize] = b';';
     }
 
-    fn blank_next(&mut self, from: u32, marker: char) {
+    fn blank_next(&mut self, from: u32, marker: &str) {
         if let Some(offset) = self.source[from as usize..].find(marker) {
             let at = from + offset as u32;
-            self.blank(at, at + 1);
+            self.blank(at, at + marker.len() as u32);
+        }
+    }
+
+    fn blank_type_suffix(&mut self, expression: Span, span: Span) {
+        self.blank(expression.end, span.end);
+        let rest = &self.source[span.end as usize..];
+        let next = rest.trim_start();
+        if rest[..rest.len() - next.len()].contains('\n') && next.starts_with(['(', '[', '`']) {
+            self.out[expression.end as usize] = b';';
         }
     }
 
@@ -130,12 +139,12 @@ impl<'a> Visit<'a> for Stripper<'_> {
 
     fn visit_ts_as_expression(&mut self, it: &TSAsExpression<'a>) {
         self.visit_expression(&it.expression);
-        self.blank(it.expression.span().end, it.span.end);
+        self.blank_type_suffix(it.expression.span(), it.span);
     }
 
     fn visit_ts_satisfies_expression(&mut self, it: &TSSatisfiesExpression<'a>) {
         self.visit_expression(&it.expression);
-        self.blank(it.expression.span().end, it.span.end);
+        self.blank_type_suffix(it.expression.span(), it.span);
     }
 
     fn visit_ts_non_null_expression(&mut self, it: &TSNonNullExpression<'a>) {
@@ -180,15 +189,9 @@ impl<'a> Visit<'a> for Stripper<'_> {
     }
 
     fn visit_class(&mut self, it: &Class<'a>) {
-        let head_end = it
-            .id
-            .as_ref()
-            .map_or(it.body.span.start, |id| id.span.start);
-        let head_start = it
-            .decorators
-            .last()
-            .map_or(it.span.start, |decorator| decorator.span.end);
-        self.blank_modifiers(head_start, head_end);
+        if it.r#abstract {
+            self.blank_next(it.span.start, "abstract");
+        }
         if let (Some(first), Some(last)) = (it.implements.first(), it.implements.last()) {
             let keyword = self.source[..first.span.start as usize]
                 .rfind("implements")
@@ -222,7 +225,7 @@ impl<'a> Visit<'a> for Stripper<'_> {
     fn visit_method_definition(&mut self, it: &MethodDefinition<'a>) {
         self.blank_member_modifiers(it.span, &it.decorators, &it.key);
         if it.optional {
-            self.blank_next(it.key.span().end, '?');
+            self.blank_next(it.key.span().end, "?");
         }
         walk::walk_method_definition(self, it);
     }
@@ -230,10 +233,10 @@ impl<'a> Visit<'a> for Stripper<'_> {
     fn visit_property_definition(&mut self, it: &PropertyDefinition<'a>) {
         self.blank_member_modifiers(it.span, &it.decorators, &it.key);
         if it.optional {
-            self.blank_next(it.key.span().end, '?');
+            self.blank_next(it.key.span().end, "?");
         }
         if it.definite {
-            self.blank_next(it.key.span().end, '!');
+            self.blank_next(it.key.span().end, "!");
         }
         walk::walk_property_definition(self, it);
     }
@@ -241,7 +244,7 @@ impl<'a> Visit<'a> for Stripper<'_> {
     fn visit_accessor_property(&mut self, it: &AccessorProperty<'a>) {
         self.blank_member_modifiers(it.span, &it.decorators, &it.key);
         if it.definite {
-            self.blank_next(it.key.span().end, '!');
+            self.blank_next(it.key.span().end, "!");
         }
         walk::walk_accessor_property(self, it);
     }
@@ -251,14 +254,14 @@ impl<'a> Visit<'a> for Stripper<'_> {
             self.reject(it.span, "parameter properties");
         }
         if it.optional {
-            self.blank_next(it.pattern.span().end, '?');
+            self.blank_next(it.pattern.span().end, "?");
         }
         walk::walk_formal_parameter(self, it);
     }
 
     fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
         if it.definite {
-            self.blank_next(it.id.span().end, '!');
+            self.blank_next(it.id.span().end, "!");
         }
         walk::walk_variable_declarator(self, it);
     }
